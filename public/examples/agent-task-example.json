@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "xiaobu.task.v1",
+  "task": {
+    "title": "完成一篇高质量公众号文章",
+    "description": "从选题到发布复盘，完成一篇结构清晰的原创内容。",
+    "type": "complex",
+    "category": "器道",
+    "dueDate": "本周日",
+    "weeklyGoal": "稳定输出一篇原创内容",
+    "overallGoal": "建立个人内容品牌",
+    "steps": [
+      {
+        "id": "step_1",
+        "title": "明确选题与读者",
+        "goal": "确认文章解决的具体问题。",
+        "minutes": 20,
+        "xp": 25,
+        "checklist": ["写出目标读者", "确认核心问题", "确定文章承诺"],
+        "guidance": "选题越具体，写作越容易。"
+      },
+      {
+        "id": "step_2",
+        "title": "搭建文章结构",
+        "goal": "完成标题、开头和三级提纲。",
+        "minutes": 25,
+        "xp": 30,
+        "checklist": ["拟定标题", "列出三级提纲", "准备一个真实案例"]
+      },
+      {
+        "id": "step_3",
+        "title": "完成初稿",
+        "goal": "沿着提纲写出完整可读版本。",
+        "minutes": 60,
+        "xp": 50,
+        "checklist": ["写完开头", "完成主体", "补充结尾行动建议"]
+      },
+      {
+        "id": "step_4",
+        "title": "修改并发布",
+        "goal": "完成校对、排版和发布。",
+        "minutes": 35,
+        "xp": 40,
+        "checklist": ["删减冗余内容", "完成排版校对", "发布并记录时间"]
+      }
+    ]
+  }
+}
