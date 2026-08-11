@@ -31,7 +31,7 @@ if ! curl --fail --silent --max-time 2 "$BRIDGE_URL/control" >/dev/null 2>&1; th
   echo $! >"$BRIDGE_PID_FILE"
 fi
 
-open -a OpenPets >/dev/null 2>&1 || true
+open /Users/Admin/Applications/OpenPets.app >/dev/null 2>&1 || true
 
 for attempt in {1..10}; do
   if curl --fail --silent --max-time 2 "$BRIDGE_URL/control" >/dev/null 2>&1; then

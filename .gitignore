@@ -38,6 +38,7 @@ yarn-error.log*
 !/scripts/install-task-handoff.command
 !/scripts/com.xiaobu.taskboard.plist
 !/scripts/com.xiaobu.workbuddy-pet.plist
+!/scripts/com.xiaobu.openpets-patched.plist
 /scripts/XiaobuTaskHandoff.app/Contents/_CodeSignature/
 
 # env files (can opt-in for committing if needed)

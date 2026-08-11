@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.xiaobu.openpets-patched</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/Admin/Applications/OpenPets.app/Contents/MacOS/OpenPets</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+  <key>StandardOutPath</key>
+  <string>/Users/Admin/Documents/项目/交互看板/logs/openpets-patched.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/Admin/Documents/项目/交互看板/logs/openpets-patched-error.log</string>
+</dict>
+</plist>
