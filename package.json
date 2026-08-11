@@ -11,7 +11,8 @@
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext dev --host 0.0.0.0",
     "desk": "node scripts/start-desk.mjs",
     "codex:bridge": "node scripts/codex-task-bridge.mjs",
-    "test": "npm run build && node --test tests/rendered-html.test.mjs",
+    "workbuddy:bridge": "node scripts/workbuddy-task-bridge.mjs",
+    "test": "npm run build && node --test tests/*.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },

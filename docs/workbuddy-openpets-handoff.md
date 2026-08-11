@@ -2,7 +2,7 @@
 
 ## 目标
 
-WorkBuddy 直接使用本机 OpenPets 桌面宠物展示任务状态。
+WorkBuddy 通过本机自动桥使用 OpenPets 桌面宠物展示任务状态。
 
 桌宠是唯一主要展示入口，不要重新创建网页看板，也不要依赖已经退休的 `/desk` 页面。
 
@@ -13,15 +13,15 @@ WorkBuddy 直接使用本机 OpenPets 桌面宠物展示任务状态。
 - OpenPets CLI：`/Applications/OpenPets.app/Contents/MacOS/openpets-cli`
 - 当前项目网页只保留工作区，不作为桌宠任务入口
 
-优先使用已经注册好的 `openpets` MCP 工具；不要自行修改 MCP 配置。
+自动桥 `scripts/workbuddy-task-bridge.mjs` 是唯一常规状态源。它只读监听 `~/.workbuddy/projects` 中的 JSONL 会话事件，不依赖 Agent 自己调用 MCP。普通任务不得另行调用 `openpets notify`，否则会形成双重状态源。
 
 ## 任务同步规则
 
-每个 WorkBuddy 任务必须对应一个独立的 OpenPets `threadId`，并在后续更新中复用同一个 `threadId`。
+每个 WorkBuddy 会话的 `conversationId` 直接作为 OpenPets `threadId`，因此并发刷新和重启都只能更新同一个气泡。
 
 最多展示 5 个 WorkBuddy 任务，优先保留最近更新的任务。不要因为内部步骤变化就创建新气泡。
 
-只在以下事件发生时调用 OpenPets：
+自动桥只在以下事件发生时更新 OpenPets：
 
 1. 任务开始；
 2. 状态发生变化；

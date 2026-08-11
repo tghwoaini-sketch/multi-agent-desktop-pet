@@ -26,6 +26,8 @@ npm run desk
 
 当前 Mac 上的后台桥接由 `com.xiaobu.taskboard` 启动项守护。它通过纯英文路径 `/Users/Admin/xiaobu-taskboard` 访问本仓库，避免 macOS `launchd` 在中文路径下启动失败。仓库内保留了 `scripts/xiaobu-taskboard-bridge.sh` 和 `scripts/com.xiaobu.taskboard.plist` 两个恢复文件。暂停/恢复状态保存在 `~/.config/openpets/xiaobu-codex-control.json`，重启电脑后不会自行改变。
 
+WorkBuddy 由独立的 `com.xiaobu.workbuddy-pet` 桥接守护。它只读监听 `~/.workbuddy/projects` 中的本地会话事件，以 WorkBuddy 会话 UUID 作为 OpenPets 固定 `threadId`，自动识别执行、等待用户、失败和完成。完成任务会自动清理，同时最多显示 5 个任务。它与 Codex 共用同一个暂停状态。
+
 ## 换一台电脑恢复
 
 1. 安装 Node.js、Codex 和 OpenPets，登录拥有本私有仓库权限的 GitHub 账号。
