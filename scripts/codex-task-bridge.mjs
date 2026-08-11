@@ -56,8 +56,12 @@ function loadOpenPetsThreads() {
   try {
     const saved = JSON.parse(readFileSync(OPENPETS_THREAD_STATE, "utf8"));
     if (!saved || typeof saved !== "object") return;
-    for (const [taskId, threadId] of Object.entries(saved)) {
+    const threads = saved.threads && typeof saved.threads === "object" ? saved.threads : saved;
+    for (const [taskId, threadId] of Object.entries(threads)) {
       if (typeof taskId === "string" && typeof threadId === "string" && threadId) openPetsThreads.set(taskId, threadId);
+    }
+    for (const [taskId, signature] of Object.entries(saved.acknowledged || {})) {
+      if (typeof taskId === "string" && typeof signature === "string") acknowledgedSignatures.set(taskId, signature);
     }
   } catch {
     // A missing or partially written state file is equivalent to a clean start.
@@ -67,7 +71,10 @@ function loadOpenPetsThreads() {
 function saveOpenPetsThreads() {
   try {
     mkdirSync(dirname(OPENPETS_THREAD_STATE), { recursive: true });
-    writeFileSync(OPENPETS_THREAD_STATE, `${JSON.stringify(Object.fromEntries(openPetsThreads))}\n`);
+    writeFileSync(OPENPETS_THREAD_STATE, `${JSON.stringify({
+      threads: Object.fromEntries(openPetsThreads),
+      acknowledged: Object.fromEntries(acknowledgedSignatures),
+    })}\n`);
   } catch {
     // The bridge can still operate without persistence if the config directory is unavailable.
   }
@@ -252,7 +259,12 @@ function codexTargetUrl(task) {
   return task.id ? `codex://threads/${encodeURIComponent(task.id)}` : "";
 }
 
+function taskSignature(task) {
+  return JSON.stringify([task.state, task.title, task.summary, task.stateNote, task.updatedAt]);
+}
+
 function activateCodexDesktop() {
+  if (process.env.XIAOBU_CODEX_DISABLE_ACTIVATE === "1") return Promise.resolve(true);
   if (process.platform !== "darwin") return Promise.resolve(false);
   return new Promise((resolve) => {
     execFile("osascript", ["-e", 'tell application "ChatGPT" to activate'], { timeout: 3000 }, (error) => resolve(!error));
@@ -271,20 +283,8 @@ function runOpenPets(args) {
 }
 
 async function relayTaskToOpenPets(task) {
-  const signature = JSON.stringify([task.state, task.title, task.summary, task.stateNote, task.updatedAt]);
+  const signature = taskSignature(task);
   if (acknowledgedSignatures.get(task.id) === signature) return;
-
-  if (task.state === "已完成") {
-    if (completedSignatures.get(task.id) !== signature) {
-      const threadId = openPetsThreads.get(task.id) || task.id;
-      openPetsThreads.delete(task.id);
-      saveOpenPetsThreads();
-      openPetsSignatures.set(task.id, signature);
-      completedSignatures.set(task.id, signature);
-      if (threadId) await runOpenPets(["clear", "--thread", threadId]);
-    }
-    return;
-  }
 
   if (openPetsSignatures.get(task.id) === signature) return;
   if (relayPromises.has(task.id)) return relayPromises.get(task.id);
@@ -295,13 +295,21 @@ async function relayTaskToOpenPets(task) {
     const threadId = task.id;
     const legacyThreadId = openPetsThreads.get(task.id);
     if (legacyThreadId && legacyThreadId !== threadId) await runOpenPets(["clear", "--thread", legacyThreadId]);
-    const openTaskUrl = codexTargetUrl(task);
-    const args = ["notify", "--title", `Codex · ${task.title}`, "--status", openPetsStatus(task), "--text", cleanText(task.stateNote, task.summary), "--url", openTaskUrl, "--button", "打开任务", "--thread", threadId];
+    const completed = task.state === "已完成";
+    const openTaskUrl = completed
+      ? `http://127.0.0.1:${PORT}/open-task?task=${encodeURIComponent(task.id)}`
+      : codexTargetUrl(task);
+    const args = [
+      "notify", "--title", `Codex · ${task.title}`, "--status", openPetsStatus(task),
+      "--text", completed ? "任务已完成，点击查看并收起" : cleanText(task.stateNote, task.summary),
+      "--url", openTaskUrl, "--button", completed ? "查看并收起" : "打开任务", "--thread", threadId,
+    ];
     const output = await runOpenPets(args);
     if (!output) return;
     openPetsThreads.set(task.id, threadId);
     saveOpenPetsThreads();
     openPetsSignatures.set(task.id, signature);
+    if (completed) completedSignatures.set(task.id, signature);
   })();
   relayPromises.set(task.id, relay);
   try {
@@ -315,7 +323,6 @@ async function clearOpenPetsTask(taskId) {
   const threadId = openPetsThreads.get(taskId) || taskId;
   openPetsThreads.delete(taskId);
   openPetsSignatures.delete(taskId);
-  acknowledgedSignatures.delete(taskId);
   completedSignatures.delete(taskId);
   saveOpenPetsThreads();
   if (threadId) await runOpenPets(["clear", "--thread", threadId]);
@@ -324,20 +331,31 @@ async function clearOpenPetsTask(taskId) {
 async function acknowledgeTask(taskId) {
   const task = snapshot.tasks.find((candidate) => candidate.id === taskId);
   if (!task) return null;
-  const signature = JSON.stringify([task.state, task.title, task.summary, task.stateNote, task.updatedAt]);
-  await clearOpenPetsTask(task.id);
-  acknowledgedSignatures.set(task.id, signature);
+  if (task.state === "已完成") {
+    acknowledgedSignatures.set(task.id, taskSignature(task));
+    await clearOpenPetsTask(task.id);
+    saveOpenPetsThreads();
+  }
   return codexTargetUrl(task);
 }
 
 async function relayCodexTasksToOpenPets(tasks) {
-  const selected = tasks.slice(0, PET_TASK_LIMIT);
+  const currentIds = new Set(tasks.map((task) => task.id));
+  for (const taskId of acknowledgedSignatures.keys()) {
+    if (!currentIds.has(taskId)) acknowledgedSignatures.delete(taskId);
+  }
+  // Completed history is intentionally excluded. A completion may remain
+  // mounted only when this bridge previously displayed the same live task.
+  const selected = tasks
+    .filter((task) => task.state !== "已完成" || openPetsThreads.has(task.id))
+    .slice(0, PET_TASK_LIMIT);
   const selectedIds = new Set(selected.map((task) => task.id));
   const evictedIds = [...openPetsThreads.keys()].filter((taskId) => !selectedIds.has(taskId));
   await Promise.all([
     ...selected.map((task) => relayTaskToOpenPets(task)),
     ...evictedIds.map((taskId) => clearOpenPetsTask(taskId)),
   ]);
+  saveOpenPetsThreads();
 }
 
 function refreshOpenPetsLayerForCodex() {
@@ -362,6 +380,11 @@ async function clearCodexOpenPetsThreads() {
   openPetsSignatures.clear();
   saveOpenPetsThreads();
   await Promise.all(threadIds.map((threadId) => runOpenPets(["clear", "--thread", threadId])));
+}
+
+function closeLauncherPage(response) {
+  response.setHeader("Content-Type", "text/html; charset=utf-8");
+  response.writeHead(200).end("<!doctype html><meta charset=utf-8><title>正在打开 Codex</title><script>window.close();setTimeout(()=>location.replace('about:blank'),120);</script>");
 }
 
 async function refreshThreads() {
@@ -490,7 +513,7 @@ const server = createServer((request, response) => {
         return;
       }
       if (await activateCodexDesktop()) {
-        response.writeHead(204).end();
+        closeLauncherPage(response);
         return;
       }
       response.writeHead(302, { Location: `http://localhost:3001/work?task=${encodeURIComponent(taskId)}` }).end();
@@ -532,7 +555,6 @@ async function shutdown() {
   clearInterval(frontmostTimer);
   clearTimeout(restartTimer);
   if (codex && !codex.killed) codex.kill("SIGTERM");
-  await clearCodexOpenPetsThreads();
   server.close(() => process.exit(0));
 }
 

@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -24,6 +24,8 @@ let refreshInFlight = false;
 const signatures = new Map();
 const relayPromises = new Map();
 const displayed = new Set();
+const acknowledged = new Map();
+const previousStates = new Map();
 let snapshot = { connected: false, paused: true, tasks: [], syncedAt: null, error: "正在连接 WorkBuddy…" };
 
 function cleanText(value, fallback = "") {
@@ -35,6 +37,8 @@ function loadDisplayed() {
   try {
     const saved = JSON.parse(readFileSync(DISPLAY_STATE_FILE, "utf8"));
     for (const id of saved?.threads || []) if (typeof id === "string") displayed.add(id);
+    for (const [id, signature] of Object.entries(saved?.acknowledged || {})) if (typeof signature === "string") acknowledged.set(id, signature);
+    for (const [id, state] of Object.entries(saved?.previousStates || {})) if (typeof state === "string") previousStates.set(id, state);
   } catch {
     // A fresh bridge starts with no owned bubbles.
   }
@@ -43,7 +47,11 @@ function loadDisplayed() {
 function saveDisplayed() {
   try {
     mkdirSync(dirname(DISPLAY_STATE_FILE), { recursive: true });
-    writeFileSync(DISPLAY_STATE_FILE, `${JSON.stringify({ threads: [...displayed] })}\n`);
+    writeFileSync(DISPLAY_STATE_FILE, `${JSON.stringify({
+      threads: [...displayed],
+      acknowledged: Object.fromEntries(acknowledged),
+      previousStates: Object.fromEntries(previousStates),
+    })}\n`);
   } catch {
     // OpenPets still works if the small recovery file cannot be saved.
   }
@@ -93,7 +101,15 @@ function contentText(item) {
 
 function queriesFrom(text) {
   if (!text) return [];
-  return [...text.matchAll(/<user_query>\s*([\s\S]*?)\s*<\/user_query>/g)].map((match) => cleanText(match[1])).filter(Boolean);
+  return [...text.matchAll(/<user_query>\s*([\s\S]*?)\s*<\/user_query>/g)].map((match) => {
+    const withoutAttachments = match[1]
+      .replace(/@(?:image|file)#\d+:(?:"[^"]+"|[^\s,，。]+?\.(?:png|jpe?g|gif|webp|heic|svg|pdf|docx?|xlsx?|pptx?|txt|md))/gi, " ")
+      .replace(/@(?:image|file)#\d+:[^\s,，。]+/gi, " ")
+      .replace(/(?:Clipboard[_ -]?Screenshot|codex-clipboard)[^\s,，。]*/gi, " ")
+      .replace(/<system-reminder[\s\S]*?<\/system-reminder>/gi, " ")
+      .replace(/^[\s,，。:：;；—-]+/, "");
+    return cleanText(withoutAttachments);
+  }).filter(Boolean);
 }
 
 function usefulQuery(queries) {
@@ -160,7 +176,7 @@ function analyzeSession(session, path) {
   const query = usefulQuery(queries);
   return {
     id: session.conversationId,
-    title: cleanText(query === "当前任务" ? workspace : query, workspace).slice(0, 52),
+    title: cleanText(query === "当前任务" ? workspace : query, workspace).slice(0, 34),
     workspace,
     state: lifecycle,
     note: cleanText(note, "WorkBuddy 正在处理"),
@@ -188,16 +204,24 @@ function openPetsStatus(state) {
   if (state === "active") return "running";
   if (state === "review") return "review";
   if (state === "failed") return "failed";
+  if (state === "completed") return "done";
   return "waiting";
 }
 
+function taskSignature(task) {
+  return JSON.stringify([task.state, task.title, task.note]);
+}
+
 async function relayTask(task) {
-  const signature = JSON.stringify([task.state, task.title, task.note]);
+  const signature = taskSignature(task);
+  if (acknowledged.get(task.id) === signature) return;
   if (signatures.get(task.id) === signature || relayPromises.has(task.id)) return relayPromises.get(task.id);
   const relay = (async () => {
     const ok = await runOpenPets([
       "notify", "--title", `WorkBuddy · ${task.title}`, "--status", openPetsStatus(task.state),
-      "--text", task.note, "--thread", task.id, "--url", "workbuddy://", "--button", "打开 WorkBuddy",
+      "--text", task.state === "completed" ? "任务已完成，点击查看并收起" : task.note,
+      "--thread", task.id, "--url", `http://127.0.0.1:${PORT}/open-task?task=${encodeURIComponent(task.id)}`,
+      "--button", task.state === "completed" ? "查看并收起" : "打开 WorkBuddy",
     ]);
     if (!ok) return;
     displayed.add(task.id);
@@ -206,6 +230,30 @@ async function relayTask(task) {
   })();
   relayPromises.set(task.id, relay);
   try { await relay; } finally { relayPromises.delete(task.id); }
+}
+
+function activateWorkBuddy() {
+  if (process.env.XIAOBU_WORKBUDDY_DISABLE_ACTIVATE === "1" || process.platform !== "darwin") return Promise.resolve(false);
+  return new Promise((resolve) => {
+    execFile("open", ["-a", "WorkBuddy"], { timeout: 3000 }, (error) => resolve(!error));
+  });
+}
+
+async function acknowledgeTask(taskId) {
+  const task = snapshot.tasks.find((candidate) => candidate.id === taskId);
+  if (!task) return false;
+  if (task.state === "completed") {
+    acknowledged.set(task.id, taskSignature(task));
+    await clearTask(task.id);
+    saveDisplayed();
+  }
+  await activateWorkBuddy();
+  return true;
+}
+
+function closeLauncherPage(response) {
+  response.setHeader("Content-Type", "text/html; charset=utf-8");
+  response.writeHead(200).end("<!doctype html><meta charset=utf-8><title>正在打开 WorkBuddy</title><script>window.close();setTimeout(()=>location.replace('about:blank'),120);</script>");
 }
 
 async function refresh() {
@@ -227,7 +275,24 @@ async function refresh() {
       try { tasks.push(analyzeSession(session, path)); } catch { /* A partial JSONL write is retried next cycle. */ }
     }
     tasks.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-    const selected = tasks.filter((task) => ["active", "review", "failed"].includes(task.state)).slice(0, MAX_TASKS);
+    const retainedIds = new Set([
+      ...tasks.slice(0, 100).map((task) => task.id),
+      ...displayed,
+    ]);
+    for (const id of acknowledged.keys()) if (!retainedIds.has(id)) acknowledged.delete(id);
+    for (const id of previousStates.keys()) if (!retainedIds.has(id)) previousStates.delete(id);
+    const candidates = [];
+    for (const task of tasks) {
+      const previous = previousStates.get(task.id);
+      const signature = taskSignature(task);
+      const shouldMountCompletion = task.state === "completed"
+        && acknowledged.get(task.id) !== signature
+        && (displayed.has(task.id) || ["active", "review", "failed"].includes(previous));
+      if (["active", "review", "failed"].includes(task.state) || shouldMountCompletion) candidates.push(task);
+      previousStates.set(task.id, task.state);
+    }
+    const selected = candidates.slice(0, MAX_TASKS);
+    saveDisplayed();
     const selectedIds = new Set(selected.map((task) => task.id));
     await Promise.all([
       ...selected.map(relayTask),
@@ -250,6 +315,19 @@ const server = createServer((request, response) => {
     response.writeHead(200).end(JSON.stringify(snapshot));
     return;
   }
+  if (request.url?.startsWith("/open-task?")) {
+    const url = new URL(request.url, `http://127.0.0.1:${PORT}`);
+    const taskId = url.searchParams.get("task");
+    if (!taskId) {
+      response.writeHead(400).end("Missing task");
+      return;
+    }
+    void acknowledgeTask(taskId).then((found) => {
+      if (!found) response.writeHead(404).end("Task not found");
+      else closeLauncherPage(response);
+    });
+    return;
+  }
   response.writeHead(404).end("Not found");
 });
 
@@ -260,7 +338,6 @@ server.listen(PORT, "127.0.0.1", () => {
 });
 
 async function shutdown() {
-  await Promise.all([...displayed].map(clearTask));
   server.close(() => process.exit(0));
 }
 

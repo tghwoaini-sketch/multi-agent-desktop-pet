@@ -43,7 +43,7 @@ WorkBuddy 通过本机自动桥使用 OpenPets 桌面宠物展示任务状态。
 
 - “本轮结束、可以继续输入”不能自动当成 `waiting`；如果本轮目标已经完成，应发送 `done`。
 - 任务完成后不能继续复用旧的 `waiting` 气泡。
-- 如果产品策略是完成后立即隐藏，则先发送一次 `done`，随后清理同一个 `threadId`。
+- 完成后发送 `done` 并保持挂载；只有用户点击完成气泡后，才清理同一个 `threadId`。
 - 不要用 `stop_pet`，除非用户明确要求关闭桌宠。
 
 ## 通知内容
@@ -54,15 +54,14 @@ WorkBuddy 通过本机自动桥使用 OpenPets 桌面宠物展示任务状态。
 - `status`：严格使用上面的 5 种状态之一；
 - `text`：当前真实进展，不要写泛化的“任务已保存”；
 - `threadId`：同一任务始终复用；
-- `url` / `buttonLabel`：只有存在稳定的 WorkBuddy 任务入口时才传。
+- `url` / `buttonLabel`：指向本机桥接器的确认入口；它负责激活 WorkBuddy、确认完成并立即自我关闭。
 
 不要把 WorkBuddy 任务链接指向：
 
 - `/desk`；
-- 临时的 `/open-task?task=...` 页面；
 - Codex 的 `codex://threads/...` 链接。
 
-WorkBuddy 任务应跳转到 WorkBuddy 自己的会话或任务入口。如果当前没有稳定深链接，就省略跳转按钮，不要生成一个空白浏览器页面。
+当前使用本机桥接器的 `/open-task?task=...` 作为受控点击回调：它不会承载界面，而是激活 WorkBuddy 后通过 `window.close()` 立即关闭，因此不能留下空白浏览器页。
 
 ## 推荐执行流程
 
@@ -81,7 +80,8 @@ WorkBuddy 任务应跳转到 WorkBuddy 自己的会话或任务入口。如果�
 
 任务完成
   → notify(status=done)
-  → 按产品策略清理同一个 threadId，不能遗留 waiting 气泡
+  → 保持同一个 threadId 挂载
+  → 用户点击后记录确认、clear，并激活 WorkBuddy
 
 任务失败
   → notify(status=failed)，正文说明原因和下一步
@@ -137,7 +137,7 @@ GET  http://localhost:3001/api/agents
 1. WorkBuddy 启动一个测试任务，桌宠出现一个 `running` 气泡；
 2. 同一任务更新状态时，气泡不重复增加，仍使用同一个 `threadId`；
 3. 将任务改为 `review`，桌宠显示需要用户介入；
-4. 将任务改为 `done`，桌宠显示绿色完成或按策略自动消失；
-5. 重启 WorkBuddy 或桥接进程后，不能把已完成任务恢复成橙色 `waiting`；
-6. 点击任务时进入 WorkBuddy 自己的任务/会话入口，不打开临时空白网页；
+4. 将任务改为 `done`，桌宠显示绿色完成并保持挂载；
+5. 重启 WorkBuddy 或桥接进程后，完成气泡仍保持 `done`，不能恢复成橙色 `waiting`；
+6. 点击完成气泡后清理该气泡、激活 WorkBuddy，且不留下空白网页；
 7. 同时最多保留 5 个 WorkBuddy 任务气泡。
