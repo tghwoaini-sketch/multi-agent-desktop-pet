@@ -296,9 +296,10 @@ async function relayTaskToOpenPets(task) {
     const legacyThreadId = openPetsThreads.get(task.id);
     if (legacyThreadId && legacyThreadId !== threadId) await runOpenPets(["clear", "--thread", legacyThreadId]);
     const completed = task.state === "已完成";
-    const openTaskUrl = completed
-      ? `http://127.0.0.1:${PORT}/open-task?task=${encodeURIComponent(task.id)}`
-      : codexTargetUrl(task);
+    // Never expose the task's original URL here. The click must be a local
+    // handoff to Codex, otherwise a stale Feishu/document URL can survive in
+    // an OpenPets thread and send the user to a web page.
+    const openTaskUrl = `http://127.0.0.1:${PORT}/open-task?task=${encodeURIComponent(task.id)}`;
     const args = [
       "notify", "--title", `Codex · ${task.title}`, "--status", openPetsStatus(task),
       "--text", completed ? "任务已完成，点击查看并收起" : cleanText(task.stateNote, task.summary),

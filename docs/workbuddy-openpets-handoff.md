@@ -61,7 +61,7 @@ WorkBuddy 通过本机自动桥使用 OpenPets 桌面宠物展示任务状态。
 - `/desk`；
 - Codex 的 `codex://threads/...` 链接。
 
-当前使用本机桥接器的 `/open-task?task=...` 作为受控点击回调：它不会承载界面，而是激活 WorkBuddy 后通过 `window.close()` 立即关闭，因此不能留下空白浏览器页。
+当前使用本机桥接器的 `/open-task?task=...` 作为唯一受控点击回调：它不会承载任务网页，也不携带飞书等原始链接，而是激活 WorkBuddy 后通过 `window.close()` 立即关闭。
 
 ## 推荐执行流程
 
