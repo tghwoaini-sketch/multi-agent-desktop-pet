@@ -43,6 +43,7 @@ const openPetsThreads = new Map();
 const openPetsSignatures = new Map();
 const acknowledgedSignatures = new Map();
 const completedSignatures = new Map();
+const relayPromises = new Map();
 let refreshInFlight = false;
 let snapshot = {
   connected: false,
@@ -163,13 +164,11 @@ function rolloutSignal(path) {
         const parsed = parseRolloutLine(parts[index]);
         if (!parsed) continue;
         const { item, type } = parsed;
-        if (["agent_reasoning", "function_call", "custom_tool_call", "reasoning"].includes(type)) {
-          signal = { kind: "active", note: "检测到 Codex 正在执行" };
-          break;
-        }
-        if (item.type !== "event_msg" || !["task_started", "task_complete", "turn_aborted"].includes(type)) continue;
+        const isFinalAnswer = item.type === "event_msg" && type === "agent_message" && item.payload?.phase === "final_answer";
+        if (!isFinalAnswer && (item.type !== "event_msg" || !["task_started", "task_complete", "turn_aborted"].includes(type))) continue;
         foundTerminal = true;
-        if (type === "task_started") signal = { kind: "active", note: "检测到 Codex 正在执行" };
+        if (isFinalAnswer) signal = { kind: "completed", note: "本轮已完成，等待下一条指令" };
+        else if (type === "task_started") signal = { kind: "active", note: "检测到 Codex 正在执行" };
         else if (type === "turn_aborted") signal = { kind: "systemError", note: "Codex 任务被中止" };
         else if (item.payload?.error) {
           const message = typeof item.payload.error === "string" ? item.payload.error : item.payload.error.message;
@@ -180,12 +179,6 @@ function rolloutSignal(path) {
     closeSync(descriptor);
     descriptor = null;
 
-    if (!signal && prefix) {
-      const parsed = parseRolloutLine(prefix);
-      if (parsed && ["agent_reasoning", "function_call", "custom_tool_call", "reasoning"].includes(parsed.type)) {
-        signal = { kind: "active", note: "检测到 Codex 正在执行" };
-      }
-    }
     if (!signal && !foundTerminal) signal = null;
     rolloutCache.set(path, { size: fileStat.size, mtimeMs: fileStat.mtimeMs, signal });
     return signal;
@@ -283,7 +276,7 @@ async function relayTaskToOpenPets(task) {
 
   if (task.state === "已完成") {
     if (completedSignatures.get(task.id) !== signature) {
-      const threadId = openPetsThreads.get(task.id);
+      const threadId = openPetsThreads.get(task.id) || task.id;
       openPetsThreads.delete(task.id);
       saveOpenPetsThreads();
       openPetsSignatures.set(task.id, signature);
@@ -294,24 +287,32 @@ async function relayTaskToOpenPets(task) {
   }
 
   if (openPetsSignatures.get(task.id) === signature) return;
-  const openTaskUrl = codexTargetUrl(task);
-  const args = ["notify", "--title", `Codex · ${task.title}`, "--status", openPetsStatus(task), "--text", cleanText(task.stateNote, task.summary), "--url", openTaskUrl, "--button", "打开任务"];
-  const threadId = openPetsThreads.get(task.id);
-  if (threadId) args.push("--thread", threadId);
-  const output = await runOpenPets(args);
-  if (!output) return;
-  if (!threadId) {
-    const candidate = output.split(/\s+/).filter(Boolean).at(-1);
-    if (candidate) {
-      openPetsThreads.set(task.id, candidate);
-      saveOpenPetsThreads();
-    }
+  if (relayPromises.has(task.id)) return relayPromises.get(task.id);
+
+  const relay = (async () => {
+    // Codex task IDs are UUIDs. Reusing that UUID as the OpenPets thread key
+    // makes notify idempotent across overlapping refreshes and bridge restarts.
+    const threadId = task.id;
+    const legacyThreadId = openPetsThreads.get(task.id);
+    if (legacyThreadId && legacyThreadId !== threadId) await runOpenPets(["clear", "--thread", legacyThreadId]);
+    const openTaskUrl = codexTargetUrl(task);
+    const args = ["notify", "--title", `Codex · ${task.title}`, "--status", openPetsStatus(task), "--text", cleanText(task.stateNote, task.summary), "--url", openTaskUrl, "--button", "打开任务", "--thread", threadId];
+    const output = await runOpenPets(args);
+    if (!output) return;
+    openPetsThreads.set(task.id, threadId);
+    saveOpenPetsThreads();
+    openPetsSignatures.set(task.id, signature);
+  })();
+  relayPromises.set(task.id, relay);
+  try {
+    await relay;
+  } finally {
+    relayPromises.delete(task.id);
   }
-  openPetsSignatures.set(task.id, signature);
 }
 
 async function clearOpenPetsTask(taskId) {
-  const threadId = openPetsThreads.get(taskId);
+  const threadId = openPetsThreads.get(taskId) || taskId;
   openPetsThreads.delete(taskId);
   openPetsSignatures.delete(taskId);
   acknowledgedSignatures.delete(taskId);
