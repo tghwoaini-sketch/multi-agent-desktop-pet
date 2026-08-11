@@ -78,7 +78,8 @@ test("Codex keeps a completed live task until acknowledgement without reviving h
   context.after(() => child.kill("SIGKILL"));
 
   await waitFor(`http://127.0.0.1:${port}/tasks`, (value) => value.tasks?.[0]?.state === "推进中");
-  await waitForCalls(cliLog, (calls) => calls.some((args) => args[0] === "notify" && args.includes("running") && args.includes(taskId)));
+  const runningCalls = await waitForCalls(cliLog, (calls) => calls.some((args) => args[0] === "notify" && args.includes("running") && args.includes(taskId)));
+  assert.ok(runningCalls.some((args) => args.some((value) => String(value).startsWith("xiaobu-task://codex?task="))));
   await writeFile(fixture, JSON.stringify({
     id: taskId,
     name: "验证完成气泡",

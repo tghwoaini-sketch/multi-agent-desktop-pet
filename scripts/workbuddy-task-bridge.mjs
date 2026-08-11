@@ -229,7 +229,7 @@ async function relayTask(task) {
     const ok = await runOpenPets([
       "notify", "--title", `WorkBuddy · ${needsUser ? "需要你 · " : ""}${task.title}`, "--status", openPetsStatus(task.state),
       "--text", task.state === "completed" ? "任务已完成，点击查看并收起" : needsUser ? `需要你的回复才能继续 · ${task.note}` : task.note,
-      "--thread", task.id, "--url", `http://127.0.0.1:${PORT}/open-task?task=${encodeURIComponent(task.id)}`,
+      "--thread", task.id, "--url", `xiaobu-task://workbuddy?task=${encodeURIComponent(task.id)}`,
       "--button", task.state === "completed" ? "查看并收起" : needsUser ? "回复 WorkBuddy" : "打开 WorkBuddy",
     ]);
     if (!ok) return;

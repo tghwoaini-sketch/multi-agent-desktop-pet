@@ -1,0 +1,15 @@
+#!/bin/zsh
+set -u
+url="${1:-}"
+route="${url#xiaobu-task://}"
+agent="${route%%\?*}"
+query="${route#*\?}"
+task="${query#task=}"
+task="${task%%&*}"
+case "$agent" in
+  codex) port=43127 ;;
+  workbuddy) port=43128 ;;
+  *) exit 2 ;;
+esac
+/usr/bin/curl -fsS --max-time 3 "http://127.0.0.1:${port}/open-task?task=${task}" >/dev/null 2>&1 || exit 1
+exit 0

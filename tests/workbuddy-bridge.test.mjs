@@ -65,6 +65,7 @@ test("WorkBuddy keeps completion mounted until click and persists acknowledgemen
   const notify = firstCalls.find((args) => args[0] === "notify");
   assert.ok(notify);
   assert.equal(notify[notify.indexOf("--thread") + 1], sessionId);
+  assert.ok(notify.some((value) => String(value).startsWith("xiaobu-task://workbuddy?task=")));
 
   await appendFile(rollout, JSON.stringify({
     timestamp: Date.now() + 2,

@@ -67,3 +67,6 @@ npm test
 ```bash
 npm run db:generate
 ```
+### 桌宠任务点击跳转
+
+首次在一台 Mac 上恢复项目时，先双击或执行 `scripts/install-task-handoff.command`。它会注册 `xiaobu-task://` 原生协议，让 OpenPets 点击 Codex/WorkBuddy 气泡时直接激活对应桌面，不再打开浏览器页面。
