@@ -1,38 +1,110 @@
 --- a/Sources/OpenPetsKit/OpenPetsHost.swift
 +++ b/Sources/OpenPetsKit/OpenPetsHost.swift
-@@
+@@ -640,7 +640,8 @@
+         )
          messageView = PetMessagePanelView(
              petSize: stableSpriteBounds.size,
 -            messageAreaHeight: messageAreaHeight
 +            messageAreaHeight: messageAreaHeight,
 +            runningFrames: frames[.running] ?? frames[.runningRight] ?? []
          )
-@@
+@@ -2659,12 +2660,14 @@
+             layout: .empty,
+             cardFrames: [],
+             messageAreaHeight: messageAreaHeight,
++            runningFrames: runningFrames,
+             onDismiss: { _ in },
+             onToggle: {}
+         ))
+     }()
      private let petSize: CGSize
      private let messageAreaHeight: CGFloat
 +    private let runningFrames: [CGImage]
-@@
+@@ -2691,10 +2694,12 @@
      init(
          petSize: CGSize,
          messageAreaHeight: CGFloat,
 +        runningFrames: [CGImage],
          closedModeRevealDurationNanoseconds: UInt64 = 5_000_000_000
      ) {
+         self.petSize = petSize
+         self.messageAreaHeight = messageAreaHeight
 +        self.runningFrames = runningFrames
-@@
+@@ -2839,6 +2844,7 @@
+             layout: layout,
+             cardFrames: layout.cardFrames,
+             messageAreaHeight: messageAreaHeight,
++            runningFrames: runningFrames,
+             onDismiss: { [weak self] threadId in
+@@ -3279,6 +3285,7 @@
+     let layout: OpenPetsMessageLayout
+     let cardFrames: [CGRect]
+     let messageAreaHeight: CGFloat
++    let runningFrames: [CGImage]
+     let onDismiss: (String) -> Void
+@@ -3292,6 +3299,7 @@
+                             OpenPetsDismissibleBubbleView(
+                                 message: message,
+                                 messageAreaHeight: messageAreaHeight,
++                                runningFrames: runningFrames,
+                                 onDismiss: onDismiss
+@@ -3352,6 +3360,7 @@
+ private struct OpenPetsDismissibleBubbleView: View {
+     let message: PetMessage
+     let messageAreaHeight: CGFloat
++    let runningFrames: [CGImage]
+     let onDismiss: (String) -> Void
+@@ -3360,6 +3369,7 @@
+         OpenPetsBubbleContentView(
+             bubble: message.bubble,
+             messageAreaHeight: messageAreaHeight,
++            runningFrames: runningFrames,
+             showsAction: isHovered
+         )
+@@ -3400,12 +3410,43 @@
+     private var closeButtonBackground: some View {
+         Color(nsColor: colorScheme == .dark ? .black : .white)
+             .opacity(colorScheme == .dark ? 0.82 : 0.94)
++    }
++}
++
++// Replaces only the indeterminate working spinner with live frames from the
++// active pet. It does not change task state or bridge polling.
++private struct OpenPetsRunningPetIndicator: View {
++    let frames: [CGImage]
++
++    var body: some View {
++        TimelineView(.periodic(from: .now, by: 0.15)) { context in
++            if let frame = runningFrame(at: context.date) {
++                Image(decorative: frame, scale: 1)
++                    .resizable()
++                    .interpolation(.none)
++                    .scaledToFit()
++                    .scaleEffect(x: -1, y: 1)
++                    .accessibilityLabel("任务正在运行")
++            } else {
++                ProgressView().scaleEffect(0.5).accessibilityLabel("任务正在运行")
++            }
++        }
++        .frame(width: 19, height: 19)
++    }
++
++    private func runningFrame(at date: Date) -> CGImage? {
++        guard !frames.isEmpty else { return nil }
++        return frames[Int(date.timeIntervalSinceReferenceDate / 0.15) % frames.count]
+     }
+ }
+@@ -3410,6 +3451,7 @@
  private struct OpenPetsBubbleContentView: View {
      let bubble: PetBubble
      var messageAreaHeight: CGFloat = 84
 +    var runningFrames: [CGImage] = []
-@@
+     var showsAction = true
+@@ -3571,8 +3613,7 @@
+         case .none:
+             EmptyView()
          case .working:
--            ProgressView().scaleEffect(0.5)
-+            OpenPetsRunningPetIndicator(frames: runningFrames).opacity(0.7)
-*** Add File: /Users/Admin/Documents/项目/交互看板/docs/openpets-native-bubble-patch.md
-# 原生桌宠气泡补丁
-
-目标：保持 OpenPets v0.7.2 原来的小气泡尺寸、位置、点击和完成勾选；只将 `.working` 的转圈替换为当前桌宠的缩小运行帧。
-
-实现位于 OpenPetsKit 的 `OpenPetsBubbleContentView`。运行帧由 `PetHostController` 注入到消息视图，使用 `TimelineView` 每 150ms 切换一帧。因此它是纯本地绘制，不增加任务桥的轮询频率，也不伪造任务进度。
-
-当前实际运行的是以 `alterhq/openpets` `v0.7.2` 为基准编译的补丁版。完整改动记录见 `patches/openpets-v0.7.2-running-pet.patch`；更新 OpenPets 时需基于新版本重新应用相同的视图注入与 `OpenPetsRunningPetIndicator` 组件。
+-            ProgressView()
+-                .scaleEffect(0.5)
++            OpenPetsRunningPetIndicator(frames: runningFrames)
+                 .opacity(0.7)
