@@ -17,7 +17,6 @@ const OPENPETS_CLI = process.env.XIAOBU_OPENPETS_CLI || "/Applications/OpenPets.
 const OPENPETS_THREAD_STATE = process.env.XIAOBU_OPENPETS_THREAD_STATE || join(homedir(), ".config", "openpets", "xiaobu-codex-threads.json");
 const CONTROL_STATE_FILE = process.env.XIAOBU_CODEX_CONTROL_STATE || join(homedir(), ".config", "openpets", "xiaobu-codex-control.json");
 const START_PAUSED = process.env.XIAOBU_CODEX_BRIDGE_START_PAUSED === "1";
-const USE_CUSTOM_BUBBLE_OVERLAY = process.env.XIAOBU_CUSTOM_BUBBLE_OVERLAY === "1";
 
 function loadPausedState() {
   if (START_PAUSED) return true;
@@ -296,16 +295,6 @@ async function relayTaskToOpenPets(task) {
     const threadId = task.id;
     const legacyThreadId = openPetsThreads.get(task.id);
     if (legacyThreadId && legacyThreadId !== threadId) await runOpenPets(["clear", "--thread", legacyThreadId]);
-    if (USE_CUSTOM_BUBBLE_OVERLAY) {
-      // The native message panel cannot render custom task UI. Keep its stable
-      // thread registry for lifecycle/acknowledgement, while the local overlay
-      // renders the bubble from this bridge's HTTP task snapshot.
-      openPetsThreads.set(task.id, threadId);
-      saveOpenPetsThreads();
-      openPetsSignatures.set(task.id, signature);
-      if (task.state === "已完成") completedSignatures.set(task.id, signature);
-      return;
-    }
     const completed = task.state === "已完成";
     // Never expose the task's original URL here. The click must be a local
     // handoff to Codex, otherwise a stale Feishu/document URL can survive in
@@ -392,11 +381,6 @@ async function clearCodexOpenPetsThreads() {
   openPetsSignatures.clear();
   saveOpenPetsThreads();
   await Promise.all(threadIds.map((threadId) => runOpenPets(["clear", "--thread", threadId])));
-}
-
-async function clearLegacyNativeBubbles() {
-  await Promise.all([...openPetsThreads.values()].map((threadId) => runOpenPets(["clear", "--thread", threadId])));
-  openPetsSignatures.clear();
 }
 
 function closeLauncherPage(response) {
@@ -562,7 +546,6 @@ const server = createServer((request, response) => {
 
 server.listen(PORT, "127.0.0.1", () => {
   process.stdout.write(`Codex task bridge: http://127.0.0.1:${PORT}/tasks\n`);
-  if (USE_CUSTOM_BUBBLE_OVERLAY) void clearLegacyNativeBubbles();
   startCodex();
   refreshOpenPetsLayerForCodex();
   frontmostTimer = setInterval(refreshOpenPetsLayerForCodex, 3000);
