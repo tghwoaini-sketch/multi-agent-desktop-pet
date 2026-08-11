@@ -35,8 +35,10 @@ yarn-error.log*
 /scripts/*.command
 !/scripts/启动小步修仙任务看板.command
 !/scripts/双击打开修仙任务看板.command
+!/scripts/install-task-handoff.command
 !/scripts/com.xiaobu.taskboard.plist
 !/scripts/com.xiaobu.workbuddy-pet.plist
+/scripts/XiaobuTaskHandoff.app/Contents/_CodeSignature/
 
 # env files (can opt-in for committing if needed)
 .env*
