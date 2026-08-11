@@ -144,14 +144,14 @@ function analyzeSession(session, path) {
     }
     if (item.type === "function_call") {
       if (item.callId) calls.set(item.callId, item.name || "");
-      lifecycle = item.name === "AskUserQuestion" ? "review" : "active";
+      lifecycle = isUserPromptTool(item.name) ? "review" : "active";
       note = lifecycle === "review" ? "等待你确认或补充信息" : `正在执行${item.name ? `：${item.name}` : "工具"}`;
       continue;
     }
     if (item.type === "function_call_result") {
       const callName = calls.get(item.callId);
       lifecycle = "active";
-      note = callName === "AskUserQuestion" ? "已收到你的回复，正在继续" : "工具执行完成，正在整理结果";
+      note = isUserPromptTool(callName) ? "已收到你的回复，正在继续" : "工具执行完成，正在整理结果";
       continue;
     }
     if (item.type === "message" && item.role === "assistant") {
@@ -184,6 +184,14 @@ function analyzeSession(session, path) {
   };
 }
 
+function isUserPromptTool(name) {
+  const normalized = String(name || "").toLowerCase().replace(/[^a-z]/g, "");
+  return [
+    "askuserquestion", "askuser", "requestuserinput", "requestinput",
+    "needuserinput", "permissionrequest", "requestpermission", "confirmaction",
+  ].includes(normalized);
+}
+
 function runOpenPets(args) {
   if (!existsSync(OPENPETS_CLI)) return Promise.resolve(false);
   return new Promise((resolve) => {
@@ -214,14 +222,15 @@ function taskSignature(task) {
 
 async function relayTask(task) {
   const signature = taskSignature(task);
+  const needsUser = task.state === "review";
   if (acknowledged.get(task.id) === signature) return;
   if (signatures.get(task.id) === signature || relayPromises.has(task.id)) return relayPromises.get(task.id);
   const relay = (async () => {
     const ok = await runOpenPets([
-      "notify", "--title", `WorkBuddy · ${task.title}`, "--status", openPetsStatus(task.state),
-      "--text", task.state === "completed" ? "任务已完成，点击查看并收起" : task.note,
+      "notify", "--title", `WorkBuddy · ${needsUser ? "需要你 · " : ""}${task.title}`, "--status", openPetsStatus(task.state),
+      "--text", task.state === "completed" ? "任务已完成，点击查看并收起" : needsUser ? `需要你的回复才能继续 · ${task.note}` : task.note,
       "--thread", task.id, "--url", `http://127.0.0.1:${PORT}/open-task?task=${encodeURIComponent(task.id)}`,
-      "--button", task.state === "completed" ? "查看并收起" : "打开 WorkBuddy",
+      "--button", task.state === "completed" ? "查看并收起" : needsUser ? "回复 WorkBuddy" : "打开 WorkBuddy",
     ]);
     if (!ok) return;
     displayed.add(task.id);

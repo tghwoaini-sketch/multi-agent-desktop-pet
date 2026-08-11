@@ -79,6 +79,28 @@ test("Codex keeps a completed live task until acknowledgement without reviving h
 
   await waitFor(`http://127.0.0.1:${port}/tasks`, (value) => value.tasks?.[0]?.state === "推进中");
   await waitForCalls(cliLog, (calls) => calls.some((args) => args[0] === "notify" && args.includes("running") && args.includes(taskId)));
+  await writeFile(fixture, JSON.stringify({
+    id: taskId,
+    name: "验证完成气泡",
+    preview: "执行集成测试",
+    status: { type: "active", waitingOnUserInput: true },
+    recencyAt: Math.floor(Date.now() / 1000),
+    createdAt: Math.floor(Date.now() / 1000),
+    path: rollout,
+  }));
+  await waitFor(`http://127.0.0.1:${port}/tasks`, (value) => value.tasks?.[0]?.state === "需要介入");
+  const reviewCalls = await waitForCalls(cliLog, (calls) => calls.some((args) => args[0] === "notify" && args.includes("review") && args.some((value) => String(value).includes("需要你"))));
+  assert.ok(reviewCalls.some((args) => args.some((value) => String(value).includes("需要你的回复才能继续"))));
+  await writeFile(fixture, JSON.stringify({
+    id: taskId,
+    name: "验证完成气泡",
+    preview: "执行集成测试",
+    status: { type: "active" },
+    recencyAt: Math.floor(Date.now() / 1000),
+    createdAt: Math.floor(Date.now() / 1000),
+    path: rollout,
+  }));
+  await waitFor(`http://127.0.0.1:${port}/tasks`, (value) => value.tasks?.[0]?.state === "推进中");
   await appendFile(rollout, JSON.stringify({ type: "event_msg", payload: { type: "task_complete" } }) + "\n");
   await waitFor(`http://127.0.0.1:${port}/tasks`, (value) => value.tasks?.[0]?.state === "已完成");
   let calls = await waitForCalls(cliLog, (items) => items.some((args) => args[0] === "notify" && args.includes("done") && args.includes(taskId)));

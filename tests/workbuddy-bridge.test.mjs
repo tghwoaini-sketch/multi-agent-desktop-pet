@@ -68,6 +68,27 @@ test("WorkBuddy keeps completion mounted until click and persists acknowledgemen
 
   await appendFile(rollout, JSON.stringify({
     timestamp: Date.now() + 2,
+    type: "function_call",
+    name: "request_user_input",
+    callId: "question-1",
+  }) + "\n");
+  const review = await waitFor(`http://127.0.0.1:${port}/tasks`, (value) => value.tasks?.[0]?.state === "review");
+  assert.equal(review.tasks[0].note, "等待你确认或补充信息");
+  const reviewCalls = (await readFile(cliLog, "utf8")).trim().split("\n").filter(Boolean).map(JSON.parse);
+  const reviewNotify = reviewCalls.find((args) => args[0] === "notify" && args.includes("review"));
+  assert.ok(reviewNotify);
+  assert.ok(reviewNotify.some((value) => String(value).includes("需要你")));
+  assert.ok(reviewNotify.some((value) => String(value).includes("需要你的回复才能继续")));
+
+  await appendFile(rollout, JSON.stringify({
+    timestamp: Date.now() + 3,
+    type: "function_call_result",
+    callId: "question-1",
+  }) + "\n");
+  await waitFor(`http://127.0.0.1:${port}/tasks`, (value) => value.tasks?.[0]?.state === "active");
+
+  await appendFile(rollout, JSON.stringify({
+    timestamp: Date.now() + 4,
     type: "message",
     role: "assistant",
     status: "completed",
