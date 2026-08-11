@@ -17,6 +17,7 @@ const SESSIONS_FILE = join(WORKBUDDY_ROOT, "app", "sessions.json");
 const OPENPETS_CLI = process.env.XIAOBU_OPENPETS_CLI || "/Applications/OpenPets.app/Contents/MacOS/openpets-cli";
 const CONTROL_STATE_FILE = process.env.XIAOBU_CODEX_CONTROL_STATE || join(homedir(), ".config", "openpets", "xiaobu-codex-control.json");
 const DISPLAY_STATE_FILE = process.env.XIAOBU_WORKBUDDY_DISPLAY_STATE || join(homedir(), ".config", "openpets", "xiaobu-workbuddy-threads.json");
+const USE_CUSTOM_BUBBLE_OVERLAY = process.env.XIAOBU_CUSTOM_BUBBLE_OVERLAY === "1";
 
 let fileIndex = new Map();
 let lastIndexAt = 0;
@@ -217,6 +218,12 @@ async function relayTask(task) {
   if (acknowledged.get(task.id) === signature) return;
   if (signatures.get(task.id) === signature || relayPromises.has(task.id)) return relayPromises.get(task.id);
   const relay = (async () => {
+    if (USE_CUSTOM_BUBBLE_OVERLAY) {
+      displayed.add(task.id);
+      signatures.set(task.id, signature);
+      saveDisplayed();
+      return;
+    }
     const ok = await runOpenPets([
       "notify", "--title", `WorkBuddy · ${task.title}`, "--status", openPetsStatus(task.state),
       "--text", task.state === "completed" ? "任务已完成，点击查看并收起" : task.note,
@@ -333,6 +340,7 @@ const server = createServer((request, response) => {
 
 server.listen(PORT, "127.0.0.1", () => {
   process.stdout.write(`WorkBuddy task bridge: http://127.0.0.1:${PORT}/tasks\n`);
+  if (USE_CUSTOM_BUBBLE_OVERLAY) void Promise.all([...displayed].map((id) => runOpenPets(["clear", "--thread", id])));
   void refresh();
   setInterval(refresh, REFRESH_MS);
 });
