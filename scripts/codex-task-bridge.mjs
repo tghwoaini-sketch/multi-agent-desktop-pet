@@ -15,11 +15,24 @@ const MAX_TASKS = 40;
 const PET_TASK_LIMIT = 5;
 const OPENPETS_CLI = process.env.XIAOBU_OPENPETS_CLI || "/Applications/OpenPets.app/Contents/MacOS/openpets-cli";
 const OPENPETS_THREAD_STATE = process.env.XIAOBU_OPENPETS_THREAD_STATE || join(homedir(), ".config", "openpets", "xiaobu-codex-threads.json");
+const CONTROL_STATE_FILE = process.env.XIAOBU_CODEX_CONTROL_STATE || join(homedir(), ".config", "openpets", "xiaobu-codex-control.json");
+const START_PAUSED = process.env.XIAOBU_CODEX_BRIDGE_START_PAUSED === "1";
+
+function loadPausedState() {
+  if (START_PAUSED) return true;
+  try {
+    const saved = JSON.parse(readFileSync(CONTROL_STATE_FILE, "utf8"));
+    if (typeof saved?.paused === "boolean") return saved.paused;
+  } catch {
+    // A fresh install starts paused until the user explicitly enables realtime.
+  }
+  return true;
+}
 
 let codex = null;
 let requestId = 0;
 let initialized = false;
-let paused = process.env.XIAOBU_CODEX_BRIDGE_START_PAUSED === "1";
+let paused = loadPausedState();
 let restartTimer = null;
 let refreshTimer = null;
 let frontmostTimer = null;
@@ -59,6 +72,15 @@ function saveOpenPetsThreads() {
   }
 }
 
+function savePausedState() {
+  try {
+    mkdirSync(dirname(CONTROL_STATE_FILE), { recursive: true });
+    writeFileSync(CONTROL_STATE_FILE, `${JSON.stringify({ paused })}\n`);
+  } catch {
+    // The bridge remains usable if the local config directory is unavailable.
+  }
+}
+
 loadOpenPetsThreads();
 
 function send(method, params) {
@@ -92,58 +114,87 @@ function cleanText(value, fallback) {
   return (text || fallback).slice(0, 180);
 }
 
+const ROLLOUT_SCAN_CHUNK = 64 * 1024;
+const ROLLOUT_SCAN_LIMIT = 512 * 1024 * 1024;
+
+function parseRolloutLine(line) {
+  try {
+    const item = JSON.parse(line);
+    const type = item.type === "event_msg" ? item.payload?.type : item.payload?.type || item.item?.type;
+    return { item, type };
+  } catch {
+    return null;
+  }
+}
+
 function rolloutSignal(path) {
+  let descriptor = null;
   try {
     const fileStat = statSync(path);
     const cached = rolloutCache.get(path);
     if (cached && cached.size === fileStat.size && cached.mtimeMs === fileStat.mtimeMs) return cached.signal;
-    const bytesToRead = Math.min(160000, fileStat.size);
-    const start = Math.max(0, fileStat.size - bytesToRead);
-    const descriptor = openSync(path, "r");
-    const buffer = Buffer.alloc(bytesToRead);
-    readSync(descriptor, buffer, 0, bytesToRead, start);
-    closeSync(descriptor);
-    const tail = buffer.toString("utf8");
-    let latest = null;
-    let activityAfterTerminal = false;
-    const pendingCalls = new Set();
-    for (const line of tail.split("\n")) {
-      try {
-        const item = JSON.parse(line);
-        const itemType = item.type === "event_msg" ? item.payload?.type : item.payload?.type || item.item?.type;
-        if (item.type === "response_item") {
-          const callId = item.payload?.call_id;
-          if (callId && ["function_call", "custom_tool_call"].includes(itemType)) pendingCalls.add(callId);
-          if (callId && ["function_call_output", "custom_tool_call_output"].includes(itemType)) pendingCalls.delete(callId);
+    descriptor = openSync(path, "r");
+    let position = fileStat.size;
+    let prefix = "";
+    let scanned = 0;
+    let signal = null;
+    let foundTerminal = false;
+
+    // Read complete JSONL records backwards. A single assistant message can
+    // be many megabytes (images/base64), so a fixed-size tail can miss the
+    // task_complete record that precedes it.
+    while (position > 0 && scanned < ROLLOUT_SCAN_LIMIT && !signal) {
+      const length = Math.min(ROLLOUT_SCAN_CHUNK, position);
+      position -= length;
+      const buffer = Buffer.alloc(length);
+      readSync(descriptor, buffer, 0, length, position);
+      scanned += length;
+      const parts = `${buffer.toString("utf8")}${prefix}`.split("\n");
+      if (parts.length === 1) {
+        // We are inside one very large JSONL record. Its contents cannot be a
+        // useful terminal event, so discard the fragment instead of growing
+        // memory while walking backwards to the previous record.
+        prefix = "";
+        continue;
+      }
+      prefix = parts[0];
+
+      for (let index = parts.length - 1; index > 0 && !signal; index -= 1) {
+        const parsed = parseRolloutLine(parts[index]);
+        if (!parsed) continue;
+        const { item, type } = parsed;
+        if (["agent_reasoning", "function_call", "custom_tool_call", "reasoning"].includes(type)) {
+          signal = { kind: "active", note: "检测到 Codex 正在执行" };
+          break;
         }
-        if (item.type === "event_msg" && ["task_started", "task_complete", "turn_aborted"].includes(itemType)) {
-          latest = item.payload;
-          activityAfterTerminal = false;
-        } else if (latest && ["agent_reasoning", "function_call", "custom_tool_call", "reasoning"].includes(itemType)) {
-          activityAfterTerminal = true;
-        }
-      } catch {
-        // A partially written JSONL line is ignored until the next refresh.
+        if (item.type !== "event_msg" || !["task_started", "task_complete", "turn_aborted"].includes(type)) continue;
+        foundTerminal = true;
+        if (type === "task_started") signal = { kind: "active", note: "检测到 Codex 正在执行" };
+        else if (type === "turn_aborted") signal = { kind: "systemError", note: "Codex 任务被中止" };
+        else if (item.payload?.error) {
+          const message = typeof item.payload.error === "string" ? item.payload.error : item.payload.error.message;
+          signal = { kind: "systemError", note: `Codex 任务失败：${cleanText(message, "请检查任务设置")}` };
+        } else signal = { kind: "completed", note: "本轮已完成，等待下一条指令" };
       }
     }
-    if (!latest && pendingCalls.size > 0) latest = { type: "task_started" };
-    else if (latest?.type === "task_complete" && !activityAfterTerminal && pendingCalls.size === 0) return { kind: "completed", note: "本轮已完成，等待下一条指令" };
-    else if (pendingCalls.size > 0 || activityAfterTerminal) latest = { type: "task_started" };
-    if (!latest) {
-      rolloutCache.set(path, { size: fileStat.size, mtimeMs: fileStat.mtimeMs, signal: null });
-      return null;
+    closeSync(descriptor);
+    descriptor = null;
+
+    if (!signal && prefix) {
+      const parsed = parseRolloutLine(prefix);
+      if (parsed && ["agent_reasoning", "function_call", "custom_tool_call", "reasoning"].includes(parsed.type)) {
+        signal = { kind: "active", note: "检测到 Codex 正在执行" };
+      }
     }
-    let signal;
-    if (latest.type === "task_started") signal = { kind: "active", note: "检测到 Codex 正在执行" };
-    else if (latest.type === "turn_aborted") signal = { kind: "systemError", note: "Codex 任务被中止" };
-    else if (latest.error) {
-      const message = typeof latest.error === "string" ? latest.error : latest.error.message;
-      signal = { kind: "systemError", note: `Codex 任务失败：${cleanText(message, "请检查任务设置")}` };
-    } else signal = { kind: "completed", note: "本轮已完成，等待下一条指令" };
+    if (!signal && !foundTerminal) signal = null;
     rolloutCache.set(path, { size: fileStat.size, mtimeMs: fileStat.mtimeMs, signal });
     return signal;
   } catch {
     return null;
+  } finally {
+    if (descriptor !== null) {
+      try { closeSync(descriptor); } catch { /* The descriptor may already be closed. */ }
+    }
   }
 }
 
@@ -154,10 +205,11 @@ function normalizeThread(thread) {
   const updatedAt = new Date(updatedSeconds * 1000).toISOString();
   const title = cleanText(thread.name, cleanText(thread.preview, "未命名 Codex 任务")).slice(0, 58);
   try {
-    // Codex reports a completed turn as `idle` once the thread is ready for
-    // another instruction. Read the rollout for both idle and notLoaded so
-    // that "ready to continue" is not mistaken for "still waiting".
-    if (["idle", "notLoaded"].includes(kind) && typeof thread.path === "string") {
+    // Codex can briefly leave thread/list at `active` after a turn has
+    // completed, and reports a completed turn as `idle` once the thread is
+    // ready for another instruction. The rollout is the source of truth for
+    // all three transitional states.
+    if (["active", "idle", "notLoaded"].includes(kind) && typeof thread.path === "string") {
       const signal = rolloutSignal(thread.path);
       if (signal?.kind === "systemError") kind = "systemError";
       else if (signal?.kind === "active") kind = "active";
@@ -258,22 +310,33 @@ async function relayTaskToOpenPets(task) {
   openPetsSignatures.set(task.id, signature);
 }
 
+async function clearOpenPetsTask(taskId) {
+  const threadId = openPetsThreads.get(taskId);
+  openPetsThreads.delete(taskId);
+  openPetsSignatures.delete(taskId);
+  acknowledgedSignatures.delete(taskId);
+  completedSignatures.delete(taskId);
+  saveOpenPetsThreads();
+  if (threadId) await runOpenPets(["clear", "--thread", threadId]);
+}
+
 async function acknowledgeTask(taskId) {
   const task = snapshot.tasks.find((candidate) => candidate.id === taskId);
   if (!task) return null;
   const signature = JSON.stringify([task.state, task.title, task.summary, task.stateNote, task.updatedAt]);
+  await clearOpenPetsTask(task.id);
   acknowledgedSignatures.set(task.id, signature);
-  const threadId = openPetsThreads.get(task.id);
-  openPetsThreads.delete(task.id);
-  saveOpenPetsThreads();
-  openPetsSignatures.delete(task.id);
-  if (threadId) await runOpenPets(["clear", "--thread", threadId]);
   return codexTargetUrl(task);
 }
 
 async function relayCodexTasksToOpenPets(tasks) {
   const selected = tasks.slice(0, PET_TASK_LIMIT);
-  await Promise.all(selected.map((task) => relayTaskToOpenPets(task)));
+  const selectedIds = new Set(selected.map((task) => task.id));
+  const evictedIds = [...openPetsThreads.keys()].filter((taskId) => !selectedIds.has(taskId));
+  await Promise.all([
+    ...selected.map((task) => relayTaskToOpenPets(task)),
+    ...evictedIds.map((taskId) => clearOpenPetsTask(taskId)),
+  ]);
 }
 
 function refreshOpenPetsLayerForCodex() {
@@ -385,6 +448,7 @@ function startCodex() {
 
 function setPaused(value) {
   paused = value;
+  savePausedState();
   clearInterval(refreshTimer);
   refreshTimer = null;
   if (paused) {

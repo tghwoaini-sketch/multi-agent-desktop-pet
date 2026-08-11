@@ -24,6 +24,8 @@ npm run desk
 
 桥接默认连接 `/Applications/OpenPets.app/Contents/MacOS/openpets-cli`，如安装位置不同，可通过 `XIAOBU_OPENPETS_CLI` 覆盖。
 
+当前 Mac 上的后台桥接由 `com.xiaobu.taskboard` 启动项守护。它通过纯英文路径 `/Users/Admin/xiaobu-taskboard` 访问本仓库，避免 macOS `launchd` 在中文路径下启动失败。仓库内保留了 `scripts/xiaobu-taskboard-bridge.sh` 和 `scripts/com.xiaobu.taskboard.plist` 两个恢复文件。暂停/恢复状态保存在 `~/.config/openpets/xiaobu-codex-control.json`，重启电脑后不会自行改变。
+
 ## 换一台电脑恢复
 
 1. 安装 Node.js、Codex 和 OpenPets，登录拥有本私有仓库权限的 GitHub 账号。
