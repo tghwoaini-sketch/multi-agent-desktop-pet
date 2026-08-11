@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ensureSelfMediaTask, ensureWebsiteTask, SELF_MEDIA_TASK_ID, type StoredTask } from "../lib/task-model";
+import { ensureEnglishReadingTask, ensureSelfMediaTask, ensureWebsiteTask, SELF_MEDIA_TASK_ID, type StoredTask } from "../lib/task-model";
 
 type WorkItem = {
   id: string;
@@ -44,6 +44,7 @@ export default function WorkPage() {
   const [library, setLibrary] = useState<StoredTask[]>([]);
   function sync() {
     ensureSelfMediaTask();
+    ensureEnglishReadingTask();
     setLibrary(ensureWebsiteTask().filter((task) => (task.workspace ?? "work") === "work"));
   }
 

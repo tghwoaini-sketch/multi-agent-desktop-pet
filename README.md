@@ -13,12 +13,23 @@ npm run dev
 
 浏览器打开 `http://localhost:3000`。
 
+如果要恢复 Codex + OpenPets 桌宠联动（macOS），运行：
+
+```bash
+npm install
+npm run desk
+```
+
+也可以双击 `scripts/启动小步修仙任务看板.command`。它会分别检查网页服务和 Codex 桥接；即使网页还在、桥接已停止，也会自动补启动桥接，并打开 OpenPets。桌面上的同名快捷方式使用同一套逻辑。
+
+桥接默认连接 `/Applications/OpenPets.app/Contents/MacOS/openpets-cli`，如安装位置不同，可通过 `XIAOBU_OPENPETS_CLI` 覆盖。
+
 ## 换一台电脑恢复
 
-1. 安装 Node.js 和 GitHub Desktop，登录拥有本私有仓库权限的 GitHub 账号。
+1. 安装 Node.js、Codex 和 OpenPets，登录拥有本私有仓库权限的 GitHub 账号。
 2. 在 GitHub Desktop 中选择 **Clone Repository**，把仓库克隆到新电脑。
 3. 在项目目录运行 `npm install`。
-4. 运行 `npm run dev`，打开 `http://localhost:3000`。
+4. 普通网页模式运行 `npm run dev`；需要桌宠联动时运行 `npm run desk` 或双击启动脚本。
 5. 导入最近一次任务数据备份；代码仓库不包含本地任务数据库。
 
 ## 版本保护规则
@@ -38,7 +49,7 @@ GitHub 仓库保存网页代码、界面素材、数据库结构和版本历史�
 - `logs` 运行日志
 - `tmp` 临时图片和生成文件
 
-因此 GitHub 可以恢复程序，却不能单独恢复任务、技巧、奖励和每日记录。运行数据需要通过看板的数据导出功能另行备份。
+因此 GitHub 可以恢复程序和桌宠桥接代码，却不能单独恢复任务、技巧、奖励和每日记录。运行数据需要通过看板的数据导出功能另行备份；OpenPets 的本机线程状态也不会上传，会在桥接重新运行后重新建立。
 
 ## 常用检查
 

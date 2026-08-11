@@ -56,7 +56,7 @@ export function loadTips(): WorkTip[] {
 }
 
 export function saveTips(tips: WorkTip[]) {
-  savePersistentValue(TIP_LIBRARY_KEY, JSON.stringify(tips));
+  return savePersistentValue(TIP_LIBRARY_KEY, JSON.stringify(tips));
 }
 
 export function getTipGroup(tip: WorkTip) {
@@ -77,9 +77,9 @@ export function saveTipGroups(groups: string[]) {
   savePersistentValue(TIP_GROUPS_KEY, JSON.stringify(Array.from(new Set(groups.map((item) => item.trim()).filter(Boolean)))));
 }
 
-export function addTip(tip: WorkTip) {
+export async function addTip(tip: WorkTip) {
   const tips = loadTips();
-  saveTips([tip, ...tips.filter((item) => item.id !== tip.id)]);
+  return await saveTips([tip, ...tips.filter((item) => item.id !== tip.id)]);
 }
 
 export async function imageFileToDataUrl(file: File, maxWidth = 1200, quality = 0.78): Promise<string> {

@@ -115,6 +115,11 @@ export default function Home() {
       const savedTasks: Task[] = (legacy.tasks ?? initialTasks).filter((task: Task) => !task.taskRef && task.id !== 7);
       const storedLedger = localStorage.getItem(DAILY_LEDGER_KEY);
       let nextLedger: DailyLedger = storedLedger ? JSON.parse(storedLedger) : { version: 2, lastDate: today, days: { [today]: savedTasks }, dayXp: { [today]: legacy.todayXp ?? 60 }, archived: [] };
+      nextLedger = {
+        ...nextLedger,
+        days: Object.fromEntries(Object.entries(nextLedger.days).map(([date, dayTasks]) => [date, dayTasks.filter((task) => !task.taskRef)])),
+        archived: (nextLedger.archived ?? []).filter((task) => !task.taskRef),
+      };
       if (!nextLedger.days[today]) {
         const previousDate = nextLedger.lastDate || Object.keys(nextLedger.days).sort().at(-1) || moveDate(today, -1);
         const elapsed = dateDistance(previousDate, today);

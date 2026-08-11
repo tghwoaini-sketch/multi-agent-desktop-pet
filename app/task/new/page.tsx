@@ -20,6 +20,7 @@ export default function NewTaskPage() {
   const [kind, setKind] = useState<"simple" | "complex">("complex");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [agent, setAgent] = useState("未分配 Agent");
   const [category, setCategory] = useState("器道");
   const [dueDate, setDueDate] = useState("本周日");
   const [weeklyGoal, setWeeklyGoal] = useState("");
@@ -57,7 +58,7 @@ export default function NewTaskPage() {
   function buildManualPackage(): TaskPackageV1 {
     return normalizeTaskPackage({
       schemaVersion: "xiaobu.task.v1",
-      task: { title, description, type: kind, category, dueDate, weeklyGoal, overallGoal, steps: kind === "complex" ? steps : [], xp: kind === "simple" ? 20 : undefined },
+      task: { title, description, agent, type: kind, category, dueDate, weeklyGoal, overallGoal, steps: kind === "complex" ? steps : [], xp: kind === "simple" ? 20 : undefined },
     });
   }
 
@@ -131,6 +132,7 @@ export default function NewTaskPage() {
           <div className="task-base-form">
             <label className="wide"><span>任务名称 *</span><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="例如：完成自媒体账号冷启动" /></label>
             <label className="wide"><span>任务说明</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="这个任务最终要取得什么结果？" /></label>
+            <label><span>负责 Agent</span><input value={agent} onChange={(event) => setAgent(event.target.value)} placeholder="例如：Codex" /></label>
             <label><span>任务分类</span><select value={category} onChange={(event) => setCategory(event.target.value)}><option>器道</option><option>悟道</option><option>练体</option><option>功法</option><option>灵石</option></select></label>
             <label><span>截止时间</span><input value={dueDate} onChange={(event) => setDueDate(event.target.value)} /></label>
             <label><span>关联每周目标</span><input value={weeklyGoal} onChange={(event) => setWeeklyGoal(event.target.value)} placeholder="例如：发布第一条内容" /></label>

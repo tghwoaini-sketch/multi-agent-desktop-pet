@@ -15,15 +15,19 @@ function isPersistedKey(key: string): key is PersistedStorageKey {
   return (PERSISTED_STORAGE_KEYS as readonly string[]).includes(key);
 }
 
-export function savePersistentValue(key: string, value: string) {
+export async function savePersistentValue(key: string, value: string): Promise<boolean> {
   localStorage.setItem(key, value);
-  if (!isPersistedKey(key)) return;
-  void fetch("/api/persistence", {
-    method: "PUT",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ key, value }),
-    keepalive: true,
-  }).catch(() => {
-    // The browser cache remains usable while the local database service recovers.
-  });
+  if (!isPersistedKey(key)) return true;
+  try {
+    const response = await fetch("/api/persistence", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ key, value }),
+      keepalive: true,
+    });
+    return response.ok;
+  } catch {
+    // Keep the browser cache usable while allowing critical save flows to retry.
+    return false;
+  }
 }

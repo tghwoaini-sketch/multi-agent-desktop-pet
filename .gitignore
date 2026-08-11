@@ -33,6 +33,8 @@ yarn-error.log*
 /public/tips/
 /scripts/*.plist
 /scripts/*.command
+!/scripts/启动小步修仙任务看板.command
+!/scripts/双击打开修仙任务看板.command
 
 # env files (can opt-in for committing if needed)
 .env*
@@ -43,6 +45,7 @@ yarn-error.log*
 # typescript
 next-env.d.ts
 /dist/
+*.tsbuildinfo
 /.wrangler/
 /outputs/
 /work/

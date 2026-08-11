@@ -34,6 +34,8 @@ export default function GenericTaskRunner() {
   const [archiveNotice, setArchiveNotice] = useState("");
   const [tipOpen, setTipOpen] = useState(false);
   const [tipImage, setTipImage] = useState("");
+  const [tipSaving, setTipSaving] = useState(false);
+  const [tipSaveError, setTipSaveError] = useState("");
   const [taskTips, setTaskTips] = useState<WorkTip[]>([]);
   const [tipForm, setTipForm] = useState({ title: "", category: "工作技巧", scenario: "", steps: "", note: "" });
   const [editingFlow, setEditingFlow] = useState(false);
@@ -313,6 +315,7 @@ export default function GenericTaskRunner() {
   function openTip() {
     setTipForm({ title: "", category: suggestTipCategory(task?.title, current?.title), scenario: "", steps: "", note: "" });
     setTipImage("");
+    setTipSaveError("");
     setTipOpen(true);
   }
 
@@ -321,8 +324,8 @@ export default function GenericTaskRunner() {
     setTipImage(await imageFileToDataUrl(file));
   }
 
-  function saveTip() {
-    if (!task || !current || !tipForm.title.trim() || !tipForm.steps.trim()) return;
+  async function saveTip() {
+    if (!task || !current || !tipForm.title.trim() || !tipForm.steps.trim() || tipSaving) return;
     const tip: WorkTip = {
       id: `tip_${Date.now().toString(36)}`,
       title: tipForm.title.trim(),
@@ -338,8 +341,15 @@ export default function GenericTaskRunner() {
       createdAt: new Date().toISOString(),
       verified: true,
     };
-    addTip(tip);
-    setTaskTips((items) => [tip, ...items]);
+    setTipSaving(true);
+    setTipSaveError("");
+    const persisted = await addTip(tip);
+    setTipSaving(false);
+    if (!persisted) {
+      setTipSaveError("暂时无法写入持久化存储，请保持此窗口并重试保存。");
+      return;
+    }
+    setTaskTips((items) => [tip, ...items.filter((item) => item.id !== tip.id)]);
     setTipOpen(false);
   }
 
@@ -432,7 +442,7 @@ export default function GenericTaskRunner() {
     </div>
     {reward !== null && <div className="focus-reward">修行有得 · +{reward} 修为</div>}
     {blockerOpen && <div className="knowledge-overlay" onMouseDown={() => setBlockerOpen(false)}><section className="blocker-dialog" onMouseDown={(event) => event.stopPropagation()}><header><div><span>卡</span><div><small>第 {editingBlockerId ? (blockers.find((item) => item.id === editingBlockerId)?.stepIndex ?? currentIndex) + 1 : currentIndex + 1} 步</small><h2>记录卡点与解决办法</h2></div></div><button onClick={() => setBlockerOpen(false)}>×</button></header><p className="dialog-hint">不用立刻解决。先准确描述哪里卡住，已经试过什么，之后找到办法再回来更新。</p><label><span>卡在哪里？ *</span><textarea autoFocus value={blockerForm.problem} onChange={(event) => setBlockerForm({ ...blockerForm, problem: event.target.value })} placeholder="例如：无法确定文章开头应该采用哪种结构" /></label><label><span>已经尝试过什么？</span><textarea value={blockerForm.attempted} onChange={(event) => setBlockerForm({ ...blockerForm, attempted: event.target.value })} placeholder="记录尝试、参考资料和失败现象，避免下次重复踩坑" /></label><label><span>对应的解决办法</span><textarea value={blockerForm.solution} onChange={(event) => setBlockerForm({ ...blockerForm, solution: event.target.value })} placeholder="暂时没有可以留空，找到答案后再补充" /></label><div className="blocker-status"><span>处理状态</span><button className={blockerForm.status === "待解决" ? "active" : ""} onClick={() => setBlockerForm({ ...blockerForm, status: "待解决" })}>待解决</button><button className={blockerForm.status === "已解决" ? "resolved" : ""} disabled={!blockerForm.solution.trim()} onClick={() => setBlockerForm({ ...blockerForm, status: "已解决" })}>✓ 已解决</button></div><footer><button onClick={() => setBlockerOpen(false)}>取消</button><button className="primary-btn" disabled={!blockerForm.problem.trim()} onClick={saveBlocker}>保存卡点记录</button></footer></section></div>}
-    {tipOpen && <div className="knowledge-overlay" onMouseDown={() => setTipOpen(false)}><section className="tip-capture-dialog" onMouseDown={(event) => event.stopPropagation()} onPaste={(event) => { const file = Array.from(event.clipboardData.items).find((item) => item.type.startsWith("image/"))?.getAsFile(); if (file) setTipScreenshot(file); }}><header><div><span>诀</span><div><small>技巧沉淀</small><h2>记录一条工作技巧</h2></div></div><button onClick={() => setTipOpen(false)}>×</button></header><div className="tip-source-lock"><span>自动关联来源</span><div><b>{task.title}</b><i>第 {currentIndex + 1} 步 · {current.title}</i></div><small>导出 Obsidian 时会保留任务 ID、步骤序号和步骤名称。</small></div><p className="dialog-hint">记录“以后遇到什么情况，可以照着怎样操作”。支持直接粘贴截图。</p><div className="tip-capture-grid"><div className="tip-capture-fields"><label><span>技巧名称 *</span><input autoFocus value={tipForm.title} onChange={(event) => setTipForm({ ...tipForm, title: event.target.value })} placeholder="例如：给图片通栏添加轮播按钮" /></label><div><label><span>分类</span><select value={tipForm.category} onChange={(event) => setTipForm({ ...tipForm, category: event.target.value })}>{TIP_CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}</select></label><label><span>适用场景</span><input value={tipForm.scenario} onChange={(event) => setTipForm({ ...tipForm, scenario: event.target.value })} placeholder="什么时候需要用到？" /></label></div><label><span>操作步骤 *</span><textarea value={tipForm.steps} onChange={(event) => setTipForm({ ...tipForm, steps: event.target.value })} placeholder={"每行写一步，例如：\n点击最下面的通栏模块\n进入设计通栏\n将效果切换为轮播"} /></label><label><span>关键提醒</span><textarea value={tipForm.note} onChange={(event) => setTipForm({ ...tipForm, note: event.target.value })} placeholder="最容易忽略或弄错的地方" /></label></div><label className={`tip-image-drop ${tipImage ? "has-image" : ""}`}><input type="file" accept="image/*" onChange={(event) => setTipScreenshot(event.target.files?.[0])} />{tipImage ? <img src={tipImage} alt="技巧截图预览" /> : <><span>图</span><b>粘贴或上传截图</b><p>截图能帮你快速找回当时的界面位置</p></>}<i>{tipImage ? "更换截图" : "选择图片"}</i></label></div><footer><a href={`/tips?task=${encodeURIComponent(task.id)}`}>先去技巧阁看看</a><button onClick={() => setTipOpen(false)}>取消</button><button className="primary-btn" disabled={!tipForm.title.trim() || !tipForm.steps.trim()} onClick={saveTip}>保存到技巧阁</button></footer></section></div>}
+    {tipOpen && <div className="knowledge-overlay" onMouseDown={() => !tipSaving && setTipOpen(false)}><section className="tip-capture-dialog" onMouseDown={(event) => event.stopPropagation()} onPaste={(event) => { const file = Array.from(event.clipboardData.items).find((item) => item.type.startsWith("image/"))?.getAsFile(); if (file) setTipScreenshot(file); }}><header><div><span>诀</span><div><small>技巧沉淀</small><h2>记录一条工作技巧</h2></div></div><button disabled={tipSaving} onClick={() => setTipOpen(false)}>×</button></header><div className="tip-source-lock"><span>自动关联来源</span><div><b>{task.title}</b><i>第 {currentIndex + 1} 步 · {current.title}</i></div><small>导出 Obsidian 时会保留任务 ID、步骤序号和步骤名称。</small></div><p className="dialog-hint">记录“以后遇到什么情况，可以照着怎样操作”。支持直接粘贴截图。</p><div className="tip-capture-grid"><div className="tip-capture-fields"><label><span>技巧名称 *</span><input autoFocus value={tipForm.title} onChange={(event) => setTipForm({ ...tipForm, title: event.target.value })} placeholder="例如：给图片通栏添加轮播按钮" /></label><div><label><span>分类</span><select value={tipForm.category} onChange={(event) => setTipForm({ ...tipForm, category: event.target.value })}>{TIP_CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}</select></label><label><span>适用场景</span><input value={tipForm.scenario} onChange={(event) => setTipForm({ ...tipForm, scenario: event.target.value })} placeholder="什么时候需要用到？" /></label></div><label><span>操作步骤 *</span><textarea value={tipForm.steps} onChange={(event) => setTipForm({ ...tipForm, steps: event.target.value })} placeholder={"每行写一步，例如：\n点击最下面的通栏模块\n进入设计通栏\n将效果切换为轮播"} /></label><label><span>关键提醒</span><textarea value={tipForm.note} onChange={(event) => setTipForm({ ...tipForm, note: event.target.value })} placeholder="最容易忽略或弄错的地方" /></label></div><label className={`tip-image-drop ${tipImage ? "has-image" : ""}`}><input type="file" accept="image/*" onChange={(event) => setTipScreenshot(event.target.files?.[0])} />{tipImage ? <img src={tipImage} alt="技巧截图预览" /> : <><span>图</span><b>粘贴或上传截图</b><p>截图能帮你快速找回当时的界面位置</p></>}<i>{tipImage ? "更换截图" : "选择图片"}</i></label></div>{tipSaveError && <p className="tip-save-error">{tipSaveError}</p>}<footer><a href={`/tips?task=${encodeURIComponent(task.id)}`}>先去技巧阁看看</a><button disabled={tipSaving} onClick={() => setTipOpen(false)}>取消</button><button className="primary-btn" disabled={!tipForm.title.trim() || !tipForm.steps.trim() || tipSaving} onClick={saveTip}>{tipSaving ? "正在确认保存…" : tipSaveError ? "重试保存" : "保存到技巧阁"}</button></footer></section></div>}
     {finished && <div className="knowledge-overlay"><section className="archive-dialog"><header><span className="finish-seal">成</span><div><small>任务圆满 · 知识归档</small><h2>把这次工作变成下次可用的经验</h2><p>已自动整理步骤输出和 {blockers.length} 条卡点记录，再补三项复盘即可存入 Obsidian。</p></div></header><div className="archive-summary"><span>✓ {steps.length} 步完成</span><span>△ {blockers.length} 条卡点</span><span>修 +{earned}</span></div><div className="archive-fields"><label><span>最终完成了什么？</span><textarea value={review.result} onChange={(event) => updateReview("result", event.target.value)} placeholder="写清最终交付物、结果或链接" /></label><label><span>哪些做法值得保留？</span><textarea value={review.lessons} onChange={(event) => updateReview("lessons", event.target.value)} placeholder="记录已经被实际结果验证的做法" /></label><label><span>下一步是什么？</span><textarea value={review.nextAction} onChange={(event) => updateReview("nextAction", event.target.value)} placeholder="下一次接续时最先做什么" /></label></div><div className="obsidian-target"><span>存入位置</span><b>Obsidian / 工作知识库 / 80_工作复盘</b><small>以 ai_ready: no 保存，避免未经验证的经验直接进入正式知识层。</small></div>{archiveNotice && <p className="archive-notice">{archiveNotice}</p>}<footer><a href="/work">稍后整理</a><button onClick={copyArchive}>复制 Markdown</button><button className="primary-btn" onClick={saveToObsidian}>存入 Obsidian →</button></footer></section></div>}
   </main>;
 }

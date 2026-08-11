@@ -1,4 +1,5 @@
 import { savePersistentValue } from "./persistent-storage";
+import { ENGLISH_READING_STEPS, ENGLISH_READING_TASK_ID } from "./english-reading-data";
 
 export const TASK_LIBRARY_KEY = "xiaobu-task-library-v1";
 export const TASK_LIBRARY_BACKUP_KEY = "xiaobu-task-library-backups-v1";
@@ -46,6 +47,7 @@ export type TaskPackageV1 = {
   task: {
     title: string;
     description?: string;
+    agent?: string;
     type: TaskKind;
     workspace?: TaskWorkspace;
     category?: string;
@@ -125,6 +127,7 @@ export function normalizeTaskPackage(input: unknown): TaskPackageV1 {
     task: {
       title,
       description: text(source.description),
+      agent: text(source.agent, "未分配 Agent"),
       type,
       workspace: source.workspace === "daily" ? "daily" : "work",
       category: text(source.category, "悟道"),
@@ -205,6 +208,7 @@ const websiteRecoveryTask: StoredTask = {
   createdAt: "2026-07-17T00:00:00.000Z",
   title: "企业官网升级示例",
   description: "完成官网关键信息迁移、内容页面整理、域名调整与发布检查。",
+  agent: "Codex",
   type: "complex",
   workspace: "work",
   category: "网站搭建",
@@ -231,7 +235,13 @@ const websiteRecoveryTask: StoredTask = {
 
 export function ensureWebsiteTask(): StoredTask[] {
   const library = loadTaskLibrary();
-  if (library.some((task) => task.id === WEBSITE_TASK_ID)) return library;
+  const existing = library.find((task) => task.id === WEBSITE_TASK_ID);
+  if (existing) {
+    if (existing.agent) return library;
+    const next = library.map((task) => task.id === WEBSITE_TASK_ID ? { ...task, agent: "Codex" } : task);
+    saveTaskLibrary(next);
+    return next;
+  }
   const recovered = recoverTaskFromBackups(WEBSITE_TASK_ID) ?? websiteRecoveryTask;
   const next = [recovered, ...library];
   saveTaskLibrary(next);
@@ -251,7 +261,13 @@ const selfMediaSteps: TaskStep[] = [
 
 export function ensureSelfMediaTask(): StoredTask[] {
   const library = loadTaskLibrary();
-  if (library.some((task) => task.id === SELF_MEDIA_TASK_ID)) return library;
+  const existing = library.find((task) => task.id === SELF_MEDIA_TASK_ID);
+  if (existing) {
+    if (existing.agent) return library;
+    const next = library.map((task) => task.id === SELF_MEDIA_TASK_ID ? { ...task, agent: "ChatGPT" } : task);
+    saveTaskLibrary(next);
+    return next;
+  }
 
   let legacy: Partial<NonNullable<StoredTask["progress"]>> = {};
   try {
@@ -267,6 +283,7 @@ export function ensureSelfMediaTask(): StoredTask[] {
     createdAt: new Date().toISOString(),
     title: "运营自媒体账号",
     description: "从账号定位、内容生产到发布复盘，建立一套可持续的内容工作流。",
+    agent: "ChatGPT",
     type: "complex",
     workspace: "work",
     category: "内容运营",
@@ -291,11 +308,53 @@ export function ensureSelfMediaTask(): StoredTask[] {
   return next;
 }
 
+export function ensureEnglishReadingTask(): StoredTask[] {
+  const library = loadTaskLibrary();
+  const existing = library.find((task) => task.id === ENGLISH_READING_TASK_ID);
+  if (existing) {
+    if (existing.agent) return library;
+    const next = library.map((task) => task.id === ENGLISH_READING_TASK_ID ? { ...task, agent: "Qoder" } : task);
+    saveTaskLibrary(next);
+    return next;
+  }
+  const steps = ENGLISH_READING_STEPS;
+  const totalXp = steps.reduce((sum, step) => sum + step.xp, 0);
+  const task: StoredTask = {
+    id: ENGLISH_READING_TASK_ID,
+    createdAt: new Date().toISOString(),
+    title: "四级真题阅读（词块法）",
+    description: "24 篇四级真题，逐篇贴给 AI 逐句讲解词块，学完生成词块标注版与总结，积累进 Obsidian 搭配本。一天一篇稳步推进。",
+    agent: "Qoder",
+    type: "complex",
+    workspace: "work",
+    category: "悟道",
+    dueDate: "长期项目",
+    xp: totalXp,
+    weeklyGoal: "四级阅读过关（425）",
+    overallGoal: "英语四级 425 过线",
+    status: "进行中",
+    steps,
+    progress: {
+      current: 0,
+      completed: [],
+      rewarded: [],
+      checkState: {},
+      checkRewardState: {},
+      drafts: {},
+      finished: false,
+    },
+  };
+  const next = [task, ...library];
+  saveTaskLibrary(next);
+  return next;
+}
+
 export const exampleAgentPackage: TaskPackageV1 = {
   schemaVersion: "xiaobu.task.v1",
   task: {
     title: "完成一篇高质量公众号文章",
     description: "从选题到发布复盘，完成一篇结构清晰的原创内容。",
+    agent: "Codex",
     type: "complex",
     category: "器道",
     dueDate: "本周日",
