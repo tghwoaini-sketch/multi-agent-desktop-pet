@@ -25,6 +25,7 @@ final class XiaobuCurrentTaskBoardModel: ObservableObject {
     }
 
     var onLayoutChanged: (() -> Void)?
+    var onComplete: (() -> Void)?
 
     init() {
         if
@@ -67,11 +68,11 @@ final class XiaobuCurrentTaskBoardModel: ObservableObject {
         )
     }
 
-    func toggleCompletion(for id: UUID) {
-        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
-        items[index].completed.toggle()
-        items.sort { lhs, rhs in lhs.completed == rhs.completed ? false : !lhs.completed && rhs.completed }
+    func completeItem(id: UUID) {
+        guard items.contains(where: { $0.id == id }) else { return }
+        items.removeAll { $0.id == id }
         save()
+        onComplete?()
     }
 
     func deleteItem(id: UUID) {
@@ -177,30 +178,23 @@ struct XiaobuCurrentTaskBoardView: View {
                     VStack(spacing: 3) {
                         ForEach(model.items) { item in
                             HStack(spacing: 7) {
-                                Button {
-                                    model.toggleCompletion(for: item.id)
-                                } label: {
-                                    Image(systemName: item.completed ? "checkmark.circle.fill" : "circle")
-                                        .font(.system(size: 14, weight: .medium))
-                                        .foregroundStyle(item.completed ? Color.green : Color.secondary)
-                                }
-                                .buttonStyle(.plain)
-
                                 TextField("写下当前事项", text: model.titleBinding(for: item.id))
                                     .textFieldStyle(.plain)
                                     .font(.system(size: 12.5, weight: .medium))
-                                    .strikethrough(item.completed)
-                                    .foregroundStyle(item.completed ? .secondary : .primary)
-
+                                    .foregroundStyle(.primary)
                                 Button {
-                                    model.deleteItem(id: item.id)
+                                    model.completeItem(id: item.id)
                                 } label: {
-                                    Image(systemName: "xmark")
-                                        .font(.system(size: 9, weight: .bold))
-                                        .foregroundStyle(.secondary)
-                                        .frame(width: 18, height: 18)
+                                    Label("完成", systemImage: "checkmark")
+                                        .font(.system(size: 10.5, weight: .semibold))
+                                        .foregroundStyle(Color(red: 0.24, green: 0.46, blue: 0.28))
+                                        .padding(.horizontal, 8)
+                                        .frame(height: 23)
+                                        .background(Color(red: 0.86, green: 0.94, blue: 0.84))
+                                        .clipShape(Capsule())
                                 }
                                 .buttonStyle(.plain)
+                                .accessibilityLabel("完成此事项")
                             }
                             .padding(.horizontal, 7)
                             .frame(height: 29)
