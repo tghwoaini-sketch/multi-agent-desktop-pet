@@ -1,0 +1,23 @@
+--- a/Sources/OpenPetsKit/OpenPetsHost.swift
++++ b/Sources/OpenPetsKit/OpenPetsHost.swift
+@@
+         let visibleFrame = (window.screen ?? NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? petFrame
+         let inset: CGFloat = 12
+         if taskBoardModel.isExpanded {
+-            let aboveY = petFrame.maxY + inset
+-            let hasRoomAbove = aboveY + size.height <= visibleFrame.maxY - inset
+-            let belowY = petFrame.minY - size.height - inset
+-            let y = hasRoomAbove ? aboveY : belowY
+-            let centeredX = petFrame.midX - size.width / 2
+-            let x = min(max(visibleFrame.minX + inset, centeredX), visibleFrame.maxX - size.width - inset)
+-            let clampedY = min(max(visibleFrame.minY + inset, y), visibleFrame.maxY - size.height - inset)
++            let rightX = petFrame.maxX + inset
++            let leftX = petFrame.minX - size.width - inset
++            let hasRoomOnRight = rightX + size.width <= visibleFrame.maxX - inset
++            let preferredX = hasRoomOnRight ? rightX : leftX
++            let x = min(max(visibleFrame.minX + inset, preferredX), visibleFrame.maxX - size.width - inset)
++            let centeredY = petFrame.midY - size.height / 2
++            let clampedY = min(max(visibleFrame.minY + inset, centeredY), visibleFrame.maxY - size.height - inset)
+             taskBoardPanel.setFrame(CGRect(x: x, y: clampedY, width: size.width, height: size.height), display: false)
+             return
+         }
