@@ -9,3 +9,9 @@
 部署约定：系统目录 `/Applications/OpenPets.app` 保留原版；补丁版运行在 `~/Applications/OpenPets.app`。这是因为系统会阻止改写 `/Applications` 下的 App。补丁二进制需含 `@loader_path/../Frameworks` 的 rpath，随后用 ad-hoc 签名重新签名整个用户目录 App。桌宠不见或 spinner 复发时，先确认当前运行路径是 `~/Applications/OpenPets.app/Contents/MacOS/OpenPets`，再检查 `openpets-cli ping` 是否返回 `pong`。
 
 持久化：`scripts/com.xiaobu.openpets-patched.plist` 会在登录时启动并守护补丁版；启动脚本也必须使用明确路径 `open ~/Applications/OpenPets.app`，不能再使用含糊的 `open -a OpenPets`。
+
+## 当前事项小看板
+
+桌宠右侧新增了一个独立的手动小看板：收起时显示未完成事项数，点击后可编辑 1–5 件“当前事项”。它不接管 Codex / WorkBuddy 的状态，也不改动原有任务气泡；目的是让你随时扫一眼自己此刻要推进什么。
+
+事项保存于桌宠应用自己的本地设置，重启桌宠或电脑后会保留。实现源码和恢复说明在 `patches/openpets-v0.7.2-current-task-board/`。
