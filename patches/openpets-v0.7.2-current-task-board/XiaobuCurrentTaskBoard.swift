@@ -37,11 +37,17 @@ final class XiaobuCurrentTaskBoardModel: ObservableObject {
         }
     }
 
-    var activeCount: Int { items.filter { !$0.completed }.count }
+    var activeCount: Int {
+        items.filter { !$0.completed }.count
+    }
 
     var preferredSize: CGSize {
-        guard isExpanded else { return CGSize(width: 44, height: 44) }
-        return CGSize(width: 300, height: max(128, 102 + CGFloat(items.count) * 46))
+        guard isExpanded else { return CGSize(width: 46, height: 28) }
+        guard !items.isEmpty else { return CGSize(width: 224, height: 82) }
+        let visibleRowCount = min(items.count, 3)
+        let rowsHeight = CGFloat(visibleRowCount) * 32
+        let addHeight: CGFloat = items.count < Self.maximumItemCount ? 28 : 0
+        return CGSize(width: 224, height: 42 + rowsHeight + addHeight + 10)
     }
 
     func addItem() {
@@ -81,7 +87,9 @@ final class XiaobuCurrentTaskBoardModel: ObservableObject {
     }
 
     private func notifyLayoutChanged() {
-        DispatchQueue.main.async { [weak self] in self?.onLayoutChanged?() }
+        DispatchQueue.main.async { [weak self] in
+            self?.onLayoutChanged?()
+        }
     }
 }
 
@@ -91,21 +99,32 @@ struct XiaobuCurrentTaskBoardView: View {
 
     var body: some View {
         Group {
-            if model.isExpanded { expandedBoard } else { collapsedHandle }
+            if model.isExpanded {
+                expandedBoard
+            } else {
+                collapsedHandle
+            }
         }
         .frame(width: model.preferredSize.width, height: model.preferredSize.height)
     }
 
     private var collapsedHandle: some View {
-        Button { model.isExpanded = true } label: {
-            ZStack {
-                Circle().fill(.ultraThinMaterial)
-                Circle().stroke(Color.secondary.opacity(0.23), lineWidth: 1)
+        Button {
+            model.isExpanded = true
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "checklist")
+                    .font(.system(size: 11, weight: .semibold))
                 Text("\(model.activeCount)")
-                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
                     .monospacedDigit()
             }
-            .shadow(color: .black.opacity(0.11), radius: 7, x: 0, y: 2)
+            .foregroundStyle(Color(red: 0.25, green: 0.38, blue: 0.28))
+            .frame(width: 46, height: 28)
+            .background(Color(red: 0.94, green: 0.96, blue: 0.91).opacity(0.96))
+            .clipShape(Capsule())
+            .overlay { Capsule().stroke(Color(red: 0.39, green: 0.53, blue: 0.38).opacity(0.42), lineWidth: 1) }
+            .shadow(color: .black.opacity(0.10), radius: 5, x: 0, y: 2)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("查看当前事项")
@@ -113,76 +132,107 @@ struct XiaobuCurrentTaskBoardView: View {
     }
 
     private var expandedBoard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("当前事项").font(.system(size: 15, weight: .bold))
-                    Text("只保留此刻要推进的事")
-                        .font(.system(size: 10.5, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 6) {
+                Image(systemName: "leaf.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color(red: 0.32, green: 0.49, blue: 0.31))
+                Text("此刻要做")
+                    .font(.system(size: 14, weight: .semibold, design: .serif))
                 Spacer()
-                Text("\(model.activeCount)/5")
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.secondary)
-                Button { model.isExpanded = false } label: {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .bold))
-                        .frame(width: 24, height: 24)
+                Text("\(model.activeCount)")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(Color(red: 0.32, green: 0.49, blue: 0.31))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Color(red: 0.88, green: 0.93, blue: 0.85))
+                    .clipShape(Capsule())
+                Button {
+                    model.isExpanded = false
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .bold))
+                        .frame(width: 20, height: 20)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("收起当前事项")
             }
 
             if model.items.isEmpty {
-                Text("添加 1–5 件你现在真正要推进的事。")
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 42, alignment: .leading)
-            } else {
-                ForEach(model.items) { item in
-                    HStack(spacing: 8) {
-                        Button { model.toggleCompletion(for: item.id) } label: {
-                            Image(systemName: item.completed ? "checkmark.circle.fill" : "circle")
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundStyle(item.completed ? Color.green : Color.secondary)
-                        }
-                        .buttonStyle(.plain)
-                        TextField("写下当前事项", text: model.titleBinding(for: item.id))
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 13.5, weight: .medium))
-                            .strikethrough(item.completed)
-                            .foregroundStyle(item.completed ? Color.secondary : Color.primary)
-                        Button { model.deleteItem(id: item.id) } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 20, height: 20)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.horizontal, 9)
-                    .frame(height: 34)
-                    .background(Color.primary.opacity(0.045))
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                }
-            }
-
-            if model.items.count < 5 {
-                Button { model.addItem() } label: {
-                    Label("添加当前事项", systemImage: "plus")
-                        .font(.system(size: 12.5, weight: .semibold))
+                Button {
+                    model.addItem()
+                } label: {
+                    Label("写下此刻最重要的一件事", systemImage: "pencil.line")
+                        .font(.system(size: 12, weight: .medium))
                         .frame(maxWidth: .infinity, minHeight: 28)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(Color.accentColor)
-                .background(Color.accentColor.opacity(0.09))
-                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                .foregroundStyle(Color(red: 0.30, green: 0.45, blue: 0.29))
+                .background(Color(red: 0.92, green: 0.95, blue: 0.88))
+                .overlay { RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Color(red: 0.48, green: 0.60, blue: 0.43).opacity(0.34), style: StrokeStyle(lineWidth: 1, dash: [3, 3])) }
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            } else {
+                ScrollView(.vertical, showsIndicators: model.items.count > 3) {
+                    VStack(spacing: 3) {
+                        ForEach(model.items) { item in
+                            HStack(spacing: 7) {
+                                Button {
+                                    model.toggleCompletion(for: item.id)
+                                } label: {
+                                    Image(systemName: item.completed ? "checkmark.circle.fill" : "circle")
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundStyle(item.completed ? Color.green : Color.secondary)
+                                }
+                                .buttonStyle(.plain)
+
+                                TextField("写下当前事项", text: model.titleBinding(for: item.id))
+                                    .textFieldStyle(.plain)
+                                    .font(.system(size: 12.5, weight: .medium))
+                                    .strikethrough(item.completed)
+                                    .foregroundStyle(item.completed ? .secondary : .primary)
+
+                                Button {
+                                    model.deleteItem(id: item.id)
+                                } label: {
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 18, height: 18)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding(.horizontal, 7)
+                            .frame(height: 29)
+                            .background(Color.primary.opacity(0.04))
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        }
+                    }
+                }
+                .frame(height: CGFloat(min(model.items.count, 3)) * 32)
+            }
+
+            if model.items.count < 5 {
+                Button {
+                    model.addItem()
+                } label: {
+                    Label("添加当前事项", systemImage: "plus")
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .frame(maxWidth: .infinity, minHeight: 24)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color(red: 0.30, green: 0.45, blue: 0.29))
+                .background(Color(red: 0.91, green: 0.95, blue: 0.88))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
         }
-        .padding(13)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay { RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Color.secondary.opacity(0.18), lineWidth: 1) }
-        .shadow(color: .black.opacity(0.16), radius: 16, x: 0, y: 6)
+        .padding(10)
+        .background(Color(red: 0.985, green: 0.98, blue: 0.93).opacity(0.98))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color(red: 0.49, green: 0.58, blue: 0.43).opacity(0.42), lineWidth: 1)
+        }
+        .shadow(color: Color(red: 0.25, green: 0.34, blue: 0.22).opacity(0.15), radius: 12, x: 0, y: 5)
     }
 }
