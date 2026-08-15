@@ -4,7 +4,7 @@
 
 这是一个基于 OpenPets 的 macOS 个人任务状态系统：任务真相来自 Codex / WorkBuddy，本项目负责读取、归一化并通过 OpenPets 的固定线程气泡展示。
 
-源码仓库：<https://github.com/tghwoaini-sketch/xiaobu-xiuxian-taskboard>
+源码仓库：<https://github.com/tghwoaini-sketch/multi-agent-desktop-pet>
 
 ## 先理解系统边界
 
@@ -30,8 +30,8 @@ OpenPets 是桌宠底座，本仓库不是它的替代实现。朋友需要先�
 5. 本仓库：
 
    ```bash
-   git clone https://github.com/tghwoaini-sketch/xiaobu-xiuxian-taskboard.git
-   cd xiaobu-xiuxian-taskboard
+   git clone https://github.com/tghwoaini-sketch/multi-agent-desktop-pet.git
+   cd multi-agent-desktop-pet
    npm install
    ```
 

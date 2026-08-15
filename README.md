@@ -1,6 +1,6 @@
-# 小步修仙 × OpenPets 桌宠任务系统
+# 多agent通用桌宠 · 小步修仙 × OpenPets 任务系统
 
-公开源码仓库：<https://github.com/tghwoaini-sketch/xiaobu-xiuxian-taskboard>
+公开源码仓库：<https://github.com/tghwoaini-sketch/multi-agent-desktop-pet>
 
 这是一个基于 OpenPets 的个人定制项目，当前处于“可运行、半成熟、仍需按本机环境配置”的阶段。它不是 OpenPets 的替代品，而是把 Codex / WorkBuddy 的任务状态接入 OpenPets，并保留一部分原看板能力。
 
@@ -54,8 +54,8 @@ WorkBuddy 由独立的 `com.xiaobu.workbuddy-pet` 桥接守护。它只读监听
 2. 直接克隆公开仓库，不需要 GitHub 登录：
 
    ```bash
-   git clone https://github.com/tghwoaini-sketch/xiaobu-xiuxian-taskboard.git
-   cd xiaobu-xiuxian-taskboard
+   git clone https://github.com/tghwoaini-sketch/multi-agent-desktop-pet.git
+   cd multi-agent-desktop-pet
    ```
 
 3. 在项目目录运行 `npm install`。
