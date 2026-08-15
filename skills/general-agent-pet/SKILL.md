@@ -1,17 +1,28 @@
 ---
 name: general-agent-pet
 description: 通用 Agent 桌宠状态助手：把 Codex、WorkBuddy 等 Agent 的当前任务、等待确认、失败和完成状态，稳定地映射到桌面宠物气泡中。
-triggers:
-  - 桌宠
-  - Agent 桌宠
-  - 当前任务
-  - 任务气泡
-  - 任务状态
 ---
 
 # 通用 Agent 桌宠
 
 这个 Skill 用来把多个 Agent 的工作状态变成一个低打扰的桌面提醒层。它的目标不是替代 Agent 界面，而是让用户不用切换窗口，也能一眼知道“现在有哪些任务在运行、哪个任务需要我、哪些任务刚完成”。
+
+## 快速开始
+
+1. 安装 Node.js `>=22.13.0` 和 OpenPets v0.7.2。
+2. 克隆本仓库并安装依赖：
+
+   ```bash
+   git clone https://github.com/tghwoaini-sketch/multi-agent-desktop-pet.git
+   cd multi-agent-desktop-pet
+   npm install
+   ```
+
+3. 先启动 OpenPets，再运行 `npm run desk`。
+4. 只接入单个 Agent 时，可分别运行 `npm run codex:bridge` 或 `npm run workbuddy:bridge`。
+5. 第一次点击气泡无法切换到 Agent 桌面时，运行 `scripts/install-task-handoff.command`。
+
+完整的首次安装、验证和示例见 [references/examples.md](references/examples.md)；遇到问题先看 [references/troubleshooting.md](references/troubleshooting.md)。
 
 ## 能力边界
 
