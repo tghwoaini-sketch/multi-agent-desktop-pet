@@ -4,6 +4,10 @@
 
 这是一个基于 OpenPets 的个人定制项目，当前处于“可运行、半成熟、仍需按本机环境配置”的阶段。它不是 OpenPets 的替代品，而是把 Codex / WorkBuddy 的任务状态接入 OpenPets，并保留一部分原看板能力。
 
+## SkillHub 导入入口
+
+仓库内的 [`skills/general-agent-pet/`](skills/general-agent-pet/) 是可从 GitHub 导入的通用 Agent 桌宠 Skill。它把桌宠作为可选显示层：原生 OpenPets 不可用时仍可用文字状态，不会把安装依赖误认为 Skill 本身已经运行。
+
 把每日任务、每周目标、长期目标和复杂工作流程组织成一套修仙成长系统。项目包含工作洞府、分步任务执行、技巧阁、愿望奖励以及本地持久化。
 
 ## 交接入口
