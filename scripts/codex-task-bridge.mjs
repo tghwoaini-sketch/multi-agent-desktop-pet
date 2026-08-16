@@ -40,6 +40,10 @@ let lastFrontmostApp = "";
 const pending = new Map();
 const rolloutCache = new Map();
 const openPetsThreads = new Map();
+// Persist the lifecycle of a mounted bubble, not only its thread ID. Older
+// state files contain IDs for historical tasks but no lifecycle information;
+// those IDs must not resurrect completed history after a restart.
+const openPetsStates = new Map();
 const openPetsSignatures = new Map();
 const acknowledgedSignatures = new Map();
 const completedSignatures = new Map();
@@ -60,6 +64,9 @@ function loadOpenPetsThreads() {
     for (const [taskId, threadId] of Object.entries(threads)) {
       if (typeof taskId === "string" && typeof threadId === "string" && threadId) openPetsThreads.set(taskId, threadId);
     }
+    for (const [taskId, state] of Object.entries(saved.states || {})) {
+      if (typeof taskId === "string" && typeof state === "string") openPetsStates.set(taskId, state);
+    }
     for (const [taskId, signature] of Object.entries(saved.acknowledged || {})) {
       if (typeof taskId === "string" && typeof signature === "string") acknowledgedSignatures.set(taskId, signature);
     }
@@ -73,6 +80,7 @@ function saveOpenPetsThreads() {
     mkdirSync(dirname(OPENPETS_THREAD_STATE), { recursive: true });
     writeFileSync(OPENPETS_THREAD_STATE, `${JSON.stringify({
       threads: Object.fromEntries(openPetsThreads),
+      states: Object.fromEntries(openPetsStates),
       acknowledged: Object.fromEntries(acknowledgedSignatures),
     })}\n`);
   } catch {
@@ -309,6 +317,7 @@ async function relayTaskToOpenPets(task) {
     const output = await runOpenPets(args);
     if (!output) return;
     openPetsThreads.set(task.id, threadId);
+    openPetsStates.set(task.id, openPetsStatus(task));
     saveOpenPetsThreads();
     openPetsSignatures.set(task.id, signature);
     if (completed) completedSignatures.set(task.id, signature);
@@ -324,6 +333,7 @@ async function relayTaskToOpenPets(task) {
 async function clearOpenPetsTask(taskId) {
   const threadId = openPetsThreads.get(taskId) || taskId;
   openPetsThreads.delete(taskId);
+  openPetsStates.delete(taskId);
   openPetsSignatures.delete(taskId);
   completedSignatures.delete(taskId);
   saveOpenPetsThreads();
@@ -349,7 +359,7 @@ async function relayCodexTasksToOpenPets(tasks) {
   // Completed history is intentionally excluded. A completion may remain
   // mounted only when this bridge previously displayed the same live task.
   const selected = tasks
-    .filter((task) => task.state !== "已完成" || openPetsThreads.has(task.id))
+    .filter((task) => task.state !== "已完成" || openPetsStates.has(task.id))
     .slice(0, PET_TASK_LIMIT);
   const selectedIds = new Set(selected.map((task) => task.id));
   const evictedIds = [...openPetsThreads.keys()].filter((taskId) => !selectedIds.has(taskId));

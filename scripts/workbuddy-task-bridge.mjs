@@ -24,6 +24,10 @@ let refreshInFlight = false;
 const signatures = new Map();
 const relayPromises = new Map();
 const displayed = new Set();
+// Keep the lifecycle alongside the mounted ID. Legacy files only have IDs;
+// without this distinction, completed historical sessions can reappear after
+// a bridge restart.
+const mountedStates = new Map();
 const acknowledged = new Map();
 const previousStates = new Map();
 let snapshot = { connected: false, paused: true, tasks: [], syncedAt: null, error: "正在连接 WorkBuddy…" };
@@ -37,6 +41,7 @@ function loadDisplayed() {
   try {
     const saved = JSON.parse(readFileSync(DISPLAY_STATE_FILE, "utf8"));
     for (const id of saved?.threads || []) if (typeof id === "string") displayed.add(id);
+    for (const [id, state] of Object.entries(saved?.states || {})) if (typeof state === "string") mountedStates.set(id, state);
     for (const [id, signature] of Object.entries(saved?.acknowledged || {})) if (typeof signature === "string") acknowledged.set(id, signature);
     for (const [id, state] of Object.entries(saved?.previousStates || {})) if (typeof state === "string") previousStates.set(id, state);
   } catch {
@@ -49,6 +54,7 @@ function saveDisplayed() {
     mkdirSync(dirname(DISPLAY_STATE_FILE), { recursive: true });
     writeFileSync(DISPLAY_STATE_FILE, `${JSON.stringify({
       threads: [...displayed],
+      states: Object.fromEntries(mountedStates),
       acknowledged: Object.fromEntries(acknowledged),
       previousStates: Object.fromEntries(previousStates),
     })}\n`);
@@ -204,6 +210,7 @@ function runOpenPets(args) {
 async function clearTask(id) {
   await runOpenPets(["clear", "--thread", id]);
   displayed.delete(id);
+  mountedStates.delete(id);
   signatures.delete(id);
   saveDisplayed();
 }
@@ -234,6 +241,7 @@ async function relayTask(task) {
     ]);
     if (!ok) return;
     displayed.add(task.id);
+    mountedStates.set(task.id, task.state);
     signatures.set(task.id, signature);
     saveDisplayed();
   })();
@@ -296,7 +304,8 @@ async function refresh() {
       const signature = taskSignature(task);
       const shouldMountCompletion = task.state === "completed"
         && acknowledged.get(task.id) !== signature
-        && (displayed.has(task.id) || ["active", "review", "failed"].includes(previous));
+        && (["active", "review", "failed", "completed"].includes(mountedStates.get(task.id))
+          || ["active", "review", "failed"].includes(previous));
       if (["active", "review", "failed"].includes(task.state) || shouldMountCompletion) candidates.push(task);
       previousStates.set(task.id, task.state);
     }
