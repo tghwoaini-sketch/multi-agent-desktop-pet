@@ -1,0 +1,64 @@
+--- a/Sources/OpenPetsKit/OpenPetsHost.swift
++++ b/Sources/OpenPetsKit/OpenPetsHost.swift
+@@ -3290,6 +3290,10 @@
+                 ZStack(alignment: .topLeading) {
++                    OpenPetsStatusLightField(indicators: messages.map { $0.bubble.indicator })
++                        .frame(width: 96, height: 78)
++                        .position(swiftUIPosition(for: layout.petFrame))
++
+                     if !isCollapsed {
+@@ -3320,6 +3324,76 @@
+ }
++
++/// A small GPU-backed ambient field behind the pet. It visualizes the aggregate
++/// state of the visible agent bubbles without another polling loop.
++private struct OpenPetsStatusLightField: View {
++    let indicators: [PetBubbleIndicator]
++
++    var body: some View {
++        TimelineView(.animation) { context in
++            Canvas { canvas, size in
++                let time = context.date.timeIntervalSinceReferenceDate
++                let colors = indicators.map(Self.color(for:))
++                let activeColors = colors.isEmpty ? [Color.green] : colors
++                let center = CGPoint(x: size.width / 2, y: size.height / 2)
++
++                canvas.addFilter(.blur(radius: 12))
++                for (index, color) in activeColors.enumerated() {
++                    let phase = time * (0.42 + Double(index) * 0.07) + Double(index) * 1.7
++                    let orbit = min(size.width, size.height) * 0.19
++                    let point = CGPoint(
++                        x: center.x + CGFloat(cos(phase)) * orbit,
++                        y: center.y + CGFloat(sin(phase * 0.83)) * orbit * 0.72
++                    )
++                    let pulse = 0.82 + 0.18 * sin(phase * 1.6)
++                    let radius = (17 + CGFloat(index % 3) * 3) * pulse
++                    let rect = CGRect(x: point.x - radius, y: point.y - radius,
++                                      width: radius * 2, height: radius * 2)
++                    canvas.fill(Path(ellipseIn: rect), with: .color(color.opacity(0.28)))
++                }
++
++                canvas.addFilter(.blur(radius: 4))
++                let coreRect = CGRect(x: center.x - 11, y: center.y - 11, width: 22, height: 22)
++                canvas.fill(Path(ellipseIn: coreRect),
++                            with: .color(Self.mixedColor(for: activeColors).opacity(0.20)))
++            }
++        }
++        .allowsHitTesting(false)
++        .accessibilityHidden(true)
++    }
++
++    private static func color(for indicator: PetBubbleIndicator) -> Color {
++        switch indicator {
++        case .working: return Color(red: 0.20, green: 0.66, blue: 0.88)
++        case .waiting, .review: return Color(red: 0.96, green: 0.60, blue: 0.18)
++        case .success: return Color(red: 0.25, green: 0.78, blue: 0.42)
++        case .attention: return Color(red: 0.92, green: 0.28, blue: 0.25)
++        case .none: return Color(red: 0.58, green: 0.62, blue: 0.66)
++        }
++    }
++
++    private static func mixedColor(for colors: [Color]) -> Color {
++        colors.count > 1 ? Color.white : (colors.first ?? Color.green)
++    }
++}
