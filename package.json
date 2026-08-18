@@ -12,6 +12,7 @@
     "desk": "node scripts/start-desk.mjs",
     "codex:bridge": "node scripts/codex-task-bridge.mjs",
     "workbuddy:bridge": "node scripts/workbuddy-task-bridge.mjs",
+    "qodercn:bridge": "node scripts/qodercn-task-bridge.mjs",
     "test": "npm run build && node --test tests/*.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"

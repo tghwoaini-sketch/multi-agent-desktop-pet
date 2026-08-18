@@ -30,7 +30,7 @@ final class XiaobuTaskHandoff: NSObject, NSApplicationDelegate {
     private func handle(_ urls: [URL]) {
         guard let url = urls.first(where: { $0.scheme == "xiaobu-task" }),
               let agent = url.host,
-              let port = ["codex": 43127, "workbuddy": 43128][agent],
+              let port = ["codex": 43127, "workbuddy": 43128, "qodercn": 43129][agent],
               let task = URLComponents(url: url, resolvingAgainstBaseURL: false)?
                 .queryItems?
                 .first(where: { $0.name == "task" })?

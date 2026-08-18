@@ -2,7 +2,7 @@
 
 ## 一句话定位
 
-这是一个基于 OpenPets 的 macOS 个人任务状态系统：任务真相来自 Codex / WorkBuddy，本项目负责读取、归一化并通过 OpenPets 的固定线程气泡展示。
+这是一个基于 OpenPets 的 macOS 个人任务状态系统：任务真相来自 Codex / WorkBuddy / Qoder CN，本项目负责读取、归一化并通过 OpenPets 的固定线程气泡展示。
 
 源码仓库：<https://github.com/tghwoaini-sketch/multi-agent-desktop-pet>
 
@@ -39,7 +39,7 @@ OpenPets 是桌宠底座，本仓库不是它的替代实现。朋友需要先�
 
 ### 直接可用的项目功能
 
-- Codex / WorkBuddy 任务桥接。
+- Codex / WorkBuddy / Qoder CN 任务桥接。
 - 每个任务固定一个 OpenPets `threadId`，更新不会新增气泡。
 - 最多挂载 5 个任务。
 - 运行、等待、需要介入、失败、完成状态映射。
@@ -62,7 +62,7 @@ OpenPets 是桌宠底座，本仓库不是它的替代实现。朋友需要先�
 1. 先单独启动 OpenPets，确认桌宠能显示。
 2. 运行 `npm run dev`，确认看板接口正常。
 3. 运行 `npm run desk`，确认 Codex 桥接能启动。
-4. 如使用 WorkBuddy，再安装 `com.xiaobu.workbuddy-pet` 启动项并确认本机 `~/.workbuddy/projects` 存在。
+4. 如使用 WorkBuddy，再安装 `com.xiaobu.workbuddy-pet` 启动项并确认本机 `~/.workbuddy/projects` 存在；如使用 Qoder CN，确认本机 `~/Library/Application Support/QoderCN/SharedClientCache/cache/db/local.db` 存在，再安装 `com.xiaobu.qodercn-pet` 启动项。
 5. 首次使用任务点击跳转时，运行 `scripts/install-task-handoff.command`。
 6. 用一个测试任务验证：运行 → 更新 → 完成 → 点击收起。
 
@@ -72,9 +72,11 @@ OpenPets 是桌宠底座，本仓库不是它的替代实现。朋友需要先�
 
 - `scripts/codex-task-bridge.mjs`：Codex 状态读取、状态映射和 OpenPets 通知。
 - `scripts/workbuddy-task-bridge.mjs`：WorkBuddy 本地会话读取和 OpenPets 通知。
+- `scripts/qodercn-task-bridge.mjs`：Qoder CN 本地 SQLite 会话读取和 OpenPets 通知。
 - `scripts/XiaobuTaskHandoff.swift`：`xiaobu-task://` 点击跳转协议。
 - `scripts/com.xiaobu.taskboard.plist`：Codex 桥接 launchd 示例。
 - `scripts/com.xiaobu.workbuddy-pet.plist`：WorkBuddy 桥接 launchd 示例。
+- `scripts/com.xiaobu.qodercn-pet.plist`：Qoder CN 桥接 launchd 示例。
 - `patches/openpets-v0.7.2-running-pet.patch`：OpenPets 原生气泡补丁。
 
 ## 状态原则

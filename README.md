@@ -2,7 +2,7 @@
 
 公开源码仓库：<https://github.com/tghwoaini-sketch/multi-agent-desktop-pet>
 
-这是一个基于 OpenPets 的个人定制项目，当前处于“可运行、半成熟、仍需按本机环境配置”的阶段。它不是 OpenPets 的替代品，而是把 Codex / WorkBuddy 的任务状态接入 OpenPets，并保留一部分原看板能力。
+这是一个基于 OpenPets 的个人定制项目，当前处于“可运行、半成熟、仍需按本机环境配置”的阶段。它不是 OpenPets 的替代品，而是把 Codex / WorkBuddy / Qoder CN 的任务状态接入 OpenPets，并保留一部分原看板能力。
 
 ## SkillHub 导入入口
 
@@ -46,7 +46,7 @@ npm run desk
 
 当前 Mac 上的后台桥接由 `com.xiaobu.taskboard` 启动项守护。仓库内保留了启动项和恢复脚本；其中部分脚本包含原作者电脑的示例路径，换电脑时必须把路径改成新电脑的实际路径，不能直接照搬 `launchd` plist。
 
-WorkBuddy 由独立的 `com.xiaobu.workbuddy-pet` 桥接守护。它只读监听 `~/.workbuddy/projects` 中的本地会话事件，以 WorkBuddy 会话 UUID 作为 OpenPets 固定 `threadId`，自动提取最近一条有效任务标题，并识别执行、等待用户、失败和完成。完成任务会变成绿色完成气泡并继续挂载；点击后才清理并切换到 WorkBuddy。Codex 使用相同的完成确认逻辑，两边合计各自最多显示 5 个任务，并共用同一个暂停状态。
+WorkBuddy 由独立的 `com.xiaobu.workbuddy-pet` 桥接守护。它只读监听 `~/.workbuddy/projects` 中的本地会话事件，以 WorkBuddy 会话 UUID 作为 OpenPets 固定 `threadId`，自动提取最近一条有效任务标题，并识别执行、等待用户、失败和完成。Qoder CN 由 `com.xiaobu.qodercn-pet` 桥接守护，只读读取 Qoder CN 的本地 SQLite 会话状态，以会话 ID 作为固定 `threadId`，只接入最近且仍在运行的任务，避免历史任务重新冒泡。完成任务会变成绿色完成气泡并继续挂载；点击后才清理并切换到对应 Agent。三者最多各显示 5 个任务，并共用同一个暂停状态。
 
 ## 换一台电脑恢复
 
