@@ -1,0 +1,22 @@
+--- a/Sources/OpenPetsKit/OpenPetsHost.swift
++++ b/Sources/OpenPetsKit/OpenPetsHost.swift
+@@
++            petView.statusTint = Self.statusTint(for: openPetsBubbleIndicator(forStatusKind: notification.status))
+@@
++        // The message panel must pass through at the pet so PetSpriteView can drag.
++        return messageMouseTarget(at: point) == nil ? nil : self
+@@
++    private var statusColor: Color {
++        switch bubble.indicator {
++        case .working: return Color(red: 0.20, green: 0.66, blue: 0.88)
++        case .waiting, .review: return Color(red: 0.96, green: 0.60, blue: 0.18)
++        case .success: return Color(red: 0.25, green: 0.78, blue: 0.42)
++        case .attention: return Color(red: 0.92, green: 0.28, blue: 0.25)
++        case .none: return .clear
++        }
++    }
+@@
++        if let statusTint {
++            statusTint.withAlphaComponent(0.24).setFill()
++            spriteFrame.fill(using: .sourceAtop)
++        }
