@@ -1,0 +1,13 @@
+--- a/Sources/OpenPetsKit/OpenPetsHost.swift
++++ b/Sources/OpenPetsKit/OpenPetsHost.swift
+@@
+-                    OpenPetsStatusLightField(indicators: messages.map { $0.bubble.indicator })
+-                        .frame(width: 96, height: 78)
+-                        .position(swiftUIPosition(for: layout.petFrame))
+@@
+-        let lightFieldFrame = CGRect(...)
+-        let messageBounds = boundsIncludingMessageShadow(for: messageFrames)
+-            .union(lightFieldFrame)
++        let messageBounds = boundsIncludingMessageShadow(for: messageFrames)
+@@
+-private struct OpenPetsStatusLightField: View { ... }

@@ -8,10 +8,9 @@
 
 ## 状态光场
 
-气泡面板的宠物区域还增加了一个轻量的原生 GPU 状态光场，记录见
-`patches/openpets-v0.7.2-status-light-field.patch`。它直接读取当前可见气泡的状态：运行中使用蓝青色缓慢流动，等待/需要确认使用橙色扩散，完成使用绿色，失败使用红色；多个 Agent 会显示多色光斑叠加。动画通过 SwiftUI `Canvas` 和 `TimelineView` 绘制，不新增网络请求、文件轮询或任务状态源，因此不会改变状态判断，也不会让后台持续拉取。
+状态色作用于气泡背景、边框和宠物图像本体；消息窗口在宠物区域只负责穿透，不再拦截拖拽。对应记录见 `patches/openpets-v0.7.2-status-color-and-drag.patch`。
 
-状态色现在同时作用于气泡背景、边框和宠物图像本体；消息窗口在宠物区域只负责穿透，不再拦截拖拽。对应记录见 `patches/openpets-v0.7.2-status-color-and-drag.patch`。
+曾尝试过宠物周围的动态 GPU 光圈，但它会干扰拖拽和视觉焦点，已移除；移除记录见 `patches/openpets-v0.7.2-remove-status-light-field.patch`。
 
 任务气泡的跨应用显示改动记录见 `patches/openpets-v0.7.2-message-panel-visibility.patch`。它固定消息窗口在失去前台焦点后仍保持显示，并避免窗口生命周期被误释放；否则切换到非 Codex、非 WorkBuddy 页面时，气泡会被 macOS 隐藏，看起来像任务栏停止工作。
 
