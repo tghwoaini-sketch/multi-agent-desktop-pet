@@ -1,0 +1,9 @@
+--- a/Sources/OpenPetsKit/OpenPetsHost.swift
++++ b/Sources/OpenPetsKit/OpenPetsHost.swift
+@@ -696,6 +696,8 @@
+         messagePanel.ignoresMouseEvents = false
+         messagePanel.isMovableByWindowBackground = false
+         messagePanel.isOpaque = false
++        messagePanel.isReleasedWhenClosed = false
++        messagePanel.hidesOnDeactivate = false
+         messagePanel.level = .statusBar
