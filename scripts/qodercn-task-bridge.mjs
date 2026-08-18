@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname } from "node:path";
 
@@ -9,6 +9,7 @@ const REFRESH_MS = 3000;
 const MAX_TASKS = 5;
 const FRESH_MS = 15 * 60_000;
 const DB = process.env.XIAOBU_QODERCN_DB || `${homedir()}/Library/Application Support/QoderCN/SharedClientCache/cache/db/local.db`;
+const QODER_LOG_FILE = process.env.XIAOBU_QODERCN_LOG || `${homedir()}/Library/Application Support/QoderCN/SharedClientCache/logs/qoder.log`;
 const SQLITE = process.env.XIAOBU_QODER_SQLITE_BIN || "/usr/bin/sqlite3";
 const OPENPETS_CLI = process.env.XIAOBU_OPENPETS_CLI || "/Applications/OpenPets.app/Contents/MacOS/openpets-cli";
 const CONTROL_STATE_FILE = process.env.XIAOBU_CODEX_CONTROL_STATE || `${homedir()}/.config/openpets/xiaobu-codex-control.json`;
@@ -23,6 +24,7 @@ const previousStates = new Map();
 const signatures = new Map();
 const acknowledged = new Map();
 const relayPromises = new Map();
+const runtimeSignals = new Map();
 
 function cleanText(value, fallback = "") {
   const text = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
@@ -59,6 +61,37 @@ function isPaused() {
   try { return JSON.parse(readFileSync(CONTROL_STATE_FILE, "utf8"))?.paused !== false; } catch { return true; }
 }
 
+function readRecentLogLines() {
+  if (!existsSync(QODER_LOG_FILE)) return [];
+  try {
+    const size = statSync(QODER_LOG_FILE).size;
+    const start = Math.max(0, size - 4 * 1024 * 1024);
+    const descriptor = openSync(QODER_LOG_FILE, "r");
+    const buffer = Buffer.alloc(size - start);
+    try { readSync(descriptor, buffer, 0, buffer.length, start); } finally { closeSync(descriptor); }
+    return buffer.toString("utf8").split("\n").slice(start > 0 ? 1 : 0);
+  } catch { return []; }
+}
+
+function refreshRuntimeSignals() {
+  const cutoff = Date.now() - FRESH_MS;
+  for (const line of readRecentLogLines()) {
+    if (!line.includes("broadcastTaskStatus")) continue;
+    const timestamp = line.match(/^(\S+)/)?.[1];
+    const eventAt = timestamp ? Date.parse(timestamp) : NaN;
+    if (!Number.isFinite(eventAt) || eventAt < cutoff) continue;
+    const jsonStart = line.indexOf("{", line.indexOf("broadcastTaskStatus"));
+    if (jsonStart < 0) continue;
+    try {
+      const payload = JSON.parse(line.slice(jsonStart));
+      const sessionId = payload.sessionId;
+      const status = String(payload.status || "");
+      if (sessionId && status) runtimeSignals.set(sessionId, { status, at: eventAt });
+    } catch { /* A partial log line is ignored until the next refresh. */ }
+  }
+  for (const [id, signal] of runtimeSignals) if (signal.at < cutoff) runtimeSignals.delete(id);
+}
+
 function runSqlite(query) {
   return new Promise((resolve, reject) => {
     if (!existsSync(DB) || !existsSync(SQLITE)) return reject(new Error("Qoder CN 本地数据库不可用"));
@@ -91,7 +124,8 @@ async function readTasks() {
   const now = Date.now();
   return rows.map((row) => {
     const updatedMs = Number(row.updated_at || 0);
-    const rawState = rowState(row);
+    const runtime = runtimeSignals.get(row.session_id);
+    const rawState = runtime?.status === "Running" ? "active" : runtime?.status === "Completed" ? "completed" : rowState(row);
     const state = rawState === "active" && now - updatedMs > FRESH_MS ? "stale" : rawState;
     const title = cleanText(row.session_title, "未命名 Qoder CN 任务");
     return {
@@ -179,6 +213,7 @@ async function refresh() {
       snapshot = { connected: false, paused: true, tasks: [], syncedAt: new Date().toISOString(), error: "实时连接已暂停" };
       return;
     }
+    refreshRuntimeSignals();
     const tasks = await readTasks();
     const candidates = [];
     for (const task of tasks) {
