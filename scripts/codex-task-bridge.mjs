@@ -60,6 +60,7 @@ function loadOpenPetsThreads() {
   try {
     const saved = JSON.parse(readFileSync(OPENPETS_THREAD_STATE, "utf8"));
     if (!saved || typeof saved !== "object") return;
+    const legacyState = saved.version !== 2;
     const threads = saved.threads && typeof saved.threads === "object" ? saved.threads : saved;
     for (const [taskId, threadId] of Object.entries(threads)) {
       if (typeof taskId === "string" && typeof threadId === "string" && threadId) openPetsThreads.set(taskId, threadId);
@@ -70,6 +71,15 @@ function loadOpenPetsThreads() {
     for (const [taskId, signature] of Object.entries(saved.acknowledged || {})) {
       if (typeof taskId === "string" && typeof signature === "string") acknowledgedSignatures.set(taskId, signature);
     }
+    // One-time repair for pre-v2 files: terminal bubbles that survived a
+    // click were indistinguishable from genuinely pending completions.
+    if (legacyState) {
+      for (const [taskId, state] of openPetsStates) {
+        if (["done", "failed"].includes(state) && !acknowledgedSignatures.has(taskId)) {
+          acknowledgedSignatures.set(taskId, "legacy-terminal-ack");
+        }
+      }
+    }
   } catch {
     // A missing or partially written state file is equivalent to a clean start.
   }
@@ -79,6 +89,7 @@ function saveOpenPetsThreads() {
   try {
     mkdirSync(dirname(OPENPETS_THREAD_STATE), { recursive: true });
     writeFileSync(OPENPETS_THREAD_STATE, `${JSON.stringify({
+      version: 2,
       threads: Object.fromEntries(openPetsThreads),
       states: Object.fromEntries(openPetsStates),
       acknowledged: Object.fromEntries(acknowledgedSignatures),
@@ -292,7 +303,7 @@ function runOpenPets(args) {
 
 async function relayTaskToOpenPets(task) {
   const signature = taskSignature(task);
-  if (acknowledgedSignatures.get(task.id) === signature) return;
+  if (task.state === "已完成" && acknowledgedSignatures.has(task.id)) return;
 
   if (openPetsSignatures.get(task.id) === signature) return;
   if (relayPromises.has(task.id)) return relayPromises.get(task.id);
@@ -352,14 +363,14 @@ async function acknowledgeTask(taskId) {
 }
 
 async function relayCodexTasksToOpenPets(tasks) {
-  const currentIds = new Set(tasks.map((task) => task.id));
-  for (const taskId of acknowledgedSignatures.keys()) {
-    if (!currentIds.has(taskId)) acknowledgedSignatures.delete(taskId);
+  for (const task of tasks) {
+    if (["推进中", "需要介入", "已阻塞"].includes(task.state)) acknowledgedSignatures.delete(task.id);
   }
   // Completed history is intentionally excluded. A completion may remain
   // mounted only when this bridge previously displayed the same live task.
   const selected = tasks
-    .filter((task) => task.state !== "已完成" || openPetsStates.has(task.id))
+    .filter((task) => (task.state !== "已完成" || openPetsStates.has(task.id))
+      && !(task.state === "已完成" && acknowledgedSignatures.has(task.id)))
     .slice(0, PET_TASK_LIMIT);
   const selectedIds = new Set(selected.map((task) => task.id));
   const evictedIds = [...openPetsThreads.keys()].filter((taskId) => !selectedIds.has(taskId));

@@ -34,10 +34,16 @@ function cleanText(value, fallback = "") {
 function loadState() {
   try {
     const saved = JSON.parse(readFileSync(DISPLAY_STATE_FILE, "utf8"));
+    const legacyState = saved?.version !== 2;
     for (const id of saved?.threads || []) if (typeof id === "string") displayed.add(id);
     for (const [id, state] of Object.entries(saved?.states || {})) if (typeof state === "string") mountedStates.set(id, state);
     for (const [id, state] of Object.entries(saved?.previousStates || {})) if (typeof state === "string") previousStates.set(id, state);
     for (const [id, signature] of Object.entries(saved?.acknowledged || {})) if (typeof signature === "string") acknowledged.set(id, signature);
+    if (legacyState) {
+      for (const [id, state] of mountedStates) {
+        if (["completed", "failed"].includes(state) && !acknowledged.has(id)) acknowledged.set(id, "legacy-terminal-ack");
+      }
+    }
   } catch {
     // A fresh bridge starts without historical Qoder bubbles.
   }
@@ -47,6 +53,7 @@ function saveState() {
   try {
     mkdirSync(dirname(DISPLAY_STATE_FILE), { recursive: true });
     writeFileSync(DISPLAY_STATE_FILE, `${JSON.stringify({
+      version: 2,
       threads: [...displayed],
       states: Object.fromEntries(mountedStates),
       previousStates: Object.fromEntries(previousStates),
@@ -163,7 +170,8 @@ async function clearTask(id) {
 
 async function relayTask(task) {
   const signature = taskSignature(task);
-  if (acknowledged.get(task.id) === signature || signatures.get(task.id) === signature) return;
+  if ((task.state === "completed" || task.state === "failed") && acknowledged.has(task.id)) return;
+  if (signatures.get(task.id) === signature) return;
   if (relayPromises.has(task.id)) return relayPromises.get(task.id);
   const relay = (async () => {
     const completed = task.state === "completed";
@@ -217,9 +225,10 @@ async function refresh() {
     const tasks = await readTasks();
     const candidates = [];
     for (const task of tasks) {
+      if (["active", "review"].includes(task.state)) acknowledged.delete(task.id);
       const previous = previousStates.get(task.id);
       const shouldMountTerminal = ["completed", "failed"].includes(task.state)
-        && acknowledged.get(task.id) !== taskSignature(task)
+        && !acknowledged.has(task.id)
         && (["active", "review"].includes(mountedStates.get(task.id)) || ["active", "review"].includes(previous));
       if (["active", "review"].includes(task.state) || shouldMountTerminal) candidates.push(task);
       previousStates.set(task.id, task.state);
