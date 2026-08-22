@@ -60,7 +60,7 @@ function loadOpenPetsThreads() {
   try {
     const saved = JSON.parse(readFileSync(OPENPETS_THREAD_STATE, "utf8"));
     if (!saved || typeof saved !== "object") return;
-    const legacyState = saved.version !== 3;
+    const legacyState = saved.version !== 4;
     const threads = saved.threads && typeof saved.threads === "object" ? saved.threads : saved;
     for (const [taskId, threadId] of Object.entries(threads)) {
       if (typeof taskId === "string" && typeof threadId === "string" && threadId) openPetsThreads.set(taskId, threadId);
@@ -71,11 +71,11 @@ function loadOpenPetsThreads() {
     for (const [taskId, signature] of Object.entries(saved.acknowledged || {})) {
       if (typeof taskId === "string" && typeof signature === "string") acknowledgedSignatures.set(taskId, signature);
     }
-    // One-time v3 repair: retire completed bubbles left mounted by older
-    // bridges so stale history is cleared instead of replayed again.
+    // One-time v4 repair: retire terminal bubbles left mounted by older
+    // bridges, including historical failures that v3 displayed unconditionally.
     if (legacyState) {
       for (const [taskId, state] of openPetsStates) {
-        if (state === "done" && !acknowledgedSignatures.has(taskId)) {
+        if (["done", "failed"].includes(state) && !acknowledgedSignatures.has(taskId)) {
           acknowledgedSignatures.set(taskId, "legacy-terminal-ack");
         }
       }
@@ -90,7 +90,7 @@ function saveOpenPetsThreads() {
     mkdirSync(dirname(OPENPETS_THREAD_STATE), { recursive: true });
     const temporaryState = `${OPENPETS_THREAD_STATE}.tmp`;
     writeFileSync(temporaryState, `${JSON.stringify({
-      version: 3,
+      version: 4,
       threads: Object.fromEntries(openPetsThreads),
       states: Object.fromEntries(openPetsStates),
       acknowledged: Object.fromEntries(acknowledgedSignatures),
@@ -320,6 +320,7 @@ async function relayTaskToOpenPets(task) {
     const legacyThreadId = openPetsThreads.get(task.id);
     if (legacyThreadId && legacyThreadId !== threadId) await runOpenPets(["clear", "--thread", legacyThreadId]);
     const completed = task.state === "已完成";
+    const terminal = completed || task.state === "已阻塞";
     const needsUser = task.state === "需要介入";
     // Never expose the task's original URL here. The click must be a local
     // handoff to Codex, otherwise a stale Feishu/document URL can survive in
@@ -328,7 +329,7 @@ async function relayTaskToOpenPets(task) {
     const args = [
       "notify", "--title", `Codex · ${needsUser ? "需要你 · " : ""}${task.title}`, "--status", openPetsStatus(task),
       "--text", completed ? "任务已完成，点击查看并收起" : needsUser ? `需要你的回复才能继续 · ${task.stateNote}` : cleanText(task.stateNote, task.summary),
-      "--url", openTaskUrl, "--button", completed ? "查看并收起" : needsUser ? "回复 Codex" : "打开任务", "--thread", threadId,
+      "--url", openTaskUrl, "--button", terminal ? "查看并收起" : needsUser ? "回复 Codex" : "打开任务", "--thread", threadId,
     ];
     const output = await runOpenPets(args);
     if (!output) return;
@@ -359,7 +360,7 @@ async function clearOpenPetsTask(taskId) {
 async function acknowledgeTask(taskId) {
   const task = snapshot.tasks.find((candidate) => candidate.id === taskId);
   if (!task) return null;
-  if (task.state === "已完成") {
+  if (["已完成", "已阻塞"].includes(task.state)) {
     acknowledgedSignatures.set(task.id, taskSignature(task));
     await clearOpenPetsTask(task.id);
     saveOpenPetsThreads();
@@ -368,11 +369,15 @@ async function acknowledgeTask(taskId) {
 }
 
 async function relayCodexTasksToOpenPets(tasks) {
-  // Completed history is intentionally excluded. A completion may remain
-  // mounted only when this bridge previously displayed the same live task.
+  // Only live work enters directly. A terminal state may remain visible only
+  // when this bridge had already mounted the task while it was live.
   const selected = tasks
-    .filter((task) => (task.state !== "已完成" || openPetsStates.has(task.id))
-      && !acknowledgedSignatures.has(task.id))
+    .filter((task) => {
+      if (acknowledgedSignatures.has(task.id)) return false;
+      if (["推进中", "需要介入"].includes(task.state)) return true;
+      if (["已完成", "已阻塞"].includes(task.state)) return openPetsStates.has(task.id);
+      return false;
+    })
     .slice(0, PET_TASK_LIMIT);
   const selectedIds = new Set(selected.map((task) => task.id));
   const evictedIds = [...openPetsThreads.keys()].filter((taskId) => !selectedIds.has(taskId));

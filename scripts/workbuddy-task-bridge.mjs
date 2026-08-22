@@ -40,15 +40,15 @@ function cleanText(value, fallback = "") {
 function loadDisplayed() {
   try {
     const saved = JSON.parse(readFileSync(DISPLAY_STATE_FILE, "utf8"));
-    const legacyState = saved?.version !== 3;
+    const legacyState = saved?.version !== 4;
     for (const id of saved?.threads || []) if (typeof id === "string") displayed.add(id);
     for (const [id, state] of Object.entries(saved?.states || {})) if (typeof state === "string") mountedStates.set(id, state);
     for (const [id, signature] of Object.entries(saved?.acknowledged || {})) if (typeof signature === "string") acknowledged.set(id, signature);
     for (const [id, state] of Object.entries(saved?.previousStates || {})) if (typeof state === "string") previousStates.set(id, state);
-    // One-time v3 repair for completed bubbles mounted by older bridges.
+    // One-time v4 repair for terminal bubbles mounted by older bridges.
     if (legacyState) {
       for (const [id, state] of mountedStates) {
-        if (state === "completed" && !acknowledged.has(id)) acknowledged.set(id, "legacy-terminal-ack");
+        if (["completed", "failed"].includes(state) && !acknowledged.has(id)) acknowledged.set(id, "legacy-terminal-ack");
       }
     }
   } catch {
@@ -61,7 +61,7 @@ function saveDisplayed() {
     mkdirSync(dirname(DISPLAY_STATE_FILE), { recursive: true });
     const temporaryState = `${DISPLAY_STATE_FILE}.tmp`;
     writeFileSync(temporaryState, `${JSON.stringify({
-      version: 3,
+      version: 4,
       threads: [...displayed],
       states: Object.fromEntries(mountedStates),
       acknowledged: Object.fromEntries(acknowledged),
@@ -240,6 +240,7 @@ function taskSignature(task) {
 async function relayTask(task) {
   const signature = taskSignature(task);
   const needsUser = task.state === "review";
+  const terminal = ["completed", "failed"].includes(task.state);
   // Once the user consumes a completion, this task ID is retired forever.
   // A stale log tail must not be able to revive it as an active task.
   if (acknowledged.has(task.id)) return;
@@ -249,7 +250,7 @@ async function relayTask(task) {
       "notify", "--title", `WorkBuddy · ${needsUser ? "需要你 · " : ""}${task.title}`, "--status", openPetsStatus(task.state),
       "--text", task.state === "completed" ? "任务已完成，点击查看并收起" : needsUser ? `需要你的回复才能继续 · ${task.note}` : task.note,
       "--thread", task.id, "--url", `xiaobu-task://workbuddy?task=${encodeURIComponent(task.id)}`,
-      "--button", task.state === "completed" ? "查看并收起" : needsUser ? "回复 WorkBuddy" : "打开 WorkBuddy",
+      "--button", terminal ? "查看并收起" : needsUser ? "回复 WorkBuddy" : "打开 WorkBuddy",
     ]);
     if (!ok) return;
     displayed.add(task.id);
@@ -271,7 +272,7 @@ function activateWorkBuddy() {
 async function acknowledgeTask(taskId) {
   const task = snapshot.tasks.find((candidate) => candidate.id === taskId);
   if (!task) return false;
-  if (task.state === "completed") {
+  if (["completed", "failed"].includes(task.state)) {
     acknowledged.set(task.id, taskSignature(task));
     await clearTask(task.id);
     saveDisplayed();
@@ -317,11 +318,12 @@ async function refresh() {
       }
       const previous = previousStates.get(task.id);
       const signature = taskSignature(task);
-      const shouldMountCompletion = task.state === "completed"
+      const terminal = ["completed", "failed"].includes(task.state);
+      const shouldMountTerminal = terminal
         && !acknowledged.has(task.id)
         && (["active", "review", "failed", "completed"].includes(mountedStates.get(task.id))
-          || ["active", "review", "failed"].includes(previous));
-      if (["active", "review", "failed"].includes(task.state) || shouldMountCompletion) candidates.push(task);
+          || ["active", "review"].includes(previous));
+      if (["active", "review"].includes(task.state) || shouldMountTerminal) candidates.push(task);
       previousStates.set(task.id, task.state);
     }
     const selected = candidates.slice(0, MAX_TASKS);

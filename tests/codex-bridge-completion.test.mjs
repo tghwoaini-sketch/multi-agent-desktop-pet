@@ -34,6 +34,7 @@ async function waitForCalls(path, predicate, timeout = 10_000) {
 test("Codex permanently retires an acknowledged task ID", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "xiaobu-codex-test-"));
   const taskId = "22222222-2222-4222-8222-222222222222";
+  const historicalFailedId = "33333333-3333-4333-8333-333333333333";
   const rollout = join(root, "rollout.jsonl");
   const fixture = join(root, "fixture.json");
   const control = join(root, "control.json");
@@ -56,7 +57,7 @@ test("Codex permanently retires an acknowledged task ID", async (context) => {
   }));
   await writeFile(fakeCli, `#!/usr/bin/env node\nrequire("node:fs").appendFileSync(process.env.FAKE_CLI_LOG, JSON.stringify(process.argv.slice(2)) + "\\n");console.log("ok");\n`);
   await chmod(fakeCli, 0o755);
-  await writeFile(fakeCodex, `#!/usr/bin/env node\nconst fs=require("node:fs"),readline=require("node:readline");const rl=readline.createInterface({input:process.stdin});rl.on("line",line=>{const m=JSON.parse(line);if(!m.id)return;const result=m.method==="thread/list"?{data:[JSON.parse(fs.readFileSync(process.env.CODEX_FIXTURE,"utf8"))]}:{};process.stdout.write(JSON.stringify({id:m.id,result})+"\\n")});\n`);
+  await writeFile(fakeCodex, `#!/usr/bin/env node\nconst fs=require("node:fs"),readline=require("node:readline");const rl=readline.createInterface({input:process.stdin});rl.on("line",line=>{const m=JSON.parse(line);if(!m.id)return;const live=JSON.parse(fs.readFileSync(process.env.CODEX_FIXTURE,"utf8"));const history={id:"${historicalFailedId}",name:"历史失败任务",preview:"不应重新提醒",status:{type:"systemError"},recencyAt:1,createdAt:1};const result=m.method==="thread/list"?{data:[live,history]}:{};process.stdout.write(JSON.stringify({id:m.id,result})+"\\n")});\n`);
   await chmod(fakeCodex, 0o755);
 
   const launch = () => spawn(process.execPath, ["scripts/codex-task-bridge.mjs"], {
@@ -80,6 +81,7 @@ test("Codex permanently retires an acknowledged task ID", async (context) => {
   await waitFor(`http://127.0.0.1:${port}/tasks`, (value) => value.tasks?.[0]?.state === "推进中");
   const runningCalls = await waitForCalls(cliLog, (calls) => calls.some((args) => args[0] === "notify" && args.includes("running") && args.includes(taskId)));
   assert.ok(runningCalls.some((args) => args.some((value) => String(value).startsWith("xiaobu-task://codex?task="))));
+  assert.ok(!runningCalls.some((args) => args[0] === "notify" && args.includes(historicalFailedId)));
   await writeFile(fixture, JSON.stringify({
     id: taskId,
     name: "验证完成气泡",

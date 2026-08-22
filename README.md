@@ -46,7 +46,7 @@ npm run desk
 
 当前 Mac 上的后台桥接由 `com.xiaobu.taskboard` 启动项守护。仓库内保留了启动项和恢复脚本；其中部分脚本包含原作者电脑的示例路径，换电脑时必须把路径改成新电脑的实际路径，不能直接照搬 `launchd` plist。
 
-WorkBuddy 由独立的 `com.xiaobu.workbuddy-pet` 桥接守护。它只读监听 `~/.workbuddy/projects` 中的本地会话事件，以 WorkBuddy 会话 UUID 作为 OpenPets 固定 `threadId`，自动提取最近一条有效任务标题，并识别执行、等待用户、失败和完成。Qoder CN 由 `com.xiaobu.qodercn-pet` 桥接守护，只读读取 Qoder CN 的本地 SQLite 会话状态，以会话 ID 作为固定 `threadId`，只接入最近且仍在运行的任务，避免历史任务重新冒泡。完成任务会变成绿色完成气泡并继续挂载；点击后才清理并切换到对应 Agent。三者最多各显示 5 个任务，并共用同一个暂停状态。
+WorkBuddy 由独立的 `com.xiaobu.workbuddy-pet` 桥接守护。它只读监听 `~/.workbuddy/projects` 中的本地会话事件，以 WorkBuddy 会话 UUID 作为 OpenPets 固定 `threadId`，自动提取最近一条有效任务标题，并识别执行、等待用户、失败和完成。Qoder CN 由 `com.xiaobu.qodercn-pet` 桥接守护，只读读取 Qoder CN 的本地 SQLite 会话状态，以会话 ID 作为固定 `threadId`，只接入最近且仍在运行的任务，避免历史任务重新冒泡。完成或失败只在运行任务转入终态时提醒并继续挂载；点击后才清理并切换到对应 Agent。三者最多各显示 5 个任务，并共用同一个暂停状态。
 
 ## 换一台电脑恢复
 
@@ -67,7 +67,7 @@ WorkBuddy 由独立的 `com.xiaobu.workbuddy-pet` 桥接守护。它只读监听
 
 - Codex 与 WorkBuddy 任务状态桥接到 OpenPets。
 - 同一任务复用同一 `threadId`，避免气泡越积越多。
-- 完成任务保持绿色完成气泡，点击后清理并永久记住该任务 ID；状态抖动、重启或历史数据回流都不会再次生成气泡。
+- 完成或失败只在任务从运行态进入终态时提醒；历史终态不会在启动时冒泡。终态气泡点击后清理并永久记住该任务 ID，状态抖动、重启或历史数据回流都不会再次生成气泡。
 - 点击任务通过本机 `xiaobu-task://` 协议切换到对应 Agent 桌面。
 - OpenPets 原生气泡的运行指示器可替换成当前桌宠的微型跑动帧。
 

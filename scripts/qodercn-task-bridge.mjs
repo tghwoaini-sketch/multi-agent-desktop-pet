@@ -34,15 +34,15 @@ function cleanText(value, fallback = "") {
 function loadState() {
   try {
     const saved = JSON.parse(readFileSync(DISPLAY_STATE_FILE, "utf8"));
-    const legacyState = saved?.version !== 3;
+    const legacyState = saved?.version !== 4;
     for (const id of saved?.threads || []) if (typeof id === "string") displayed.add(id);
     for (const [id, state] of Object.entries(saved?.states || {})) if (typeof state === "string") mountedStates.set(id, state);
     for (const [id, state] of Object.entries(saved?.previousStates || {})) if (typeof state === "string") previousStates.set(id, state);
     for (const [id, signature] of Object.entries(saved?.acknowledged || {})) if (typeof signature === "string") acknowledged.set(id, signature);
-    // One-time v3 repair for completed bubbles mounted by older bridges.
+    // One-time v4 repair for terminal bubbles mounted by older bridges.
     if (legacyState) {
       for (const [id, state] of mountedStates) {
-        if (state === "completed" && !acknowledged.has(id)) acknowledged.set(id, "legacy-terminal-ack");
+        if (["completed", "failed"].includes(state) && !acknowledged.has(id)) acknowledged.set(id, "legacy-terminal-ack");
       }
     }
   } catch {
@@ -55,7 +55,7 @@ function saveState() {
     mkdirSync(dirname(DISPLAY_STATE_FILE), { recursive: true });
     const temporaryState = `${DISPLAY_STATE_FILE}.tmp`;
     writeFileSync(temporaryState, `${JSON.stringify({
-      version: 3,
+      version: 4,
       threads: [...displayed],
       states: Object.fromEntries(mountedStates),
       previousStates: Object.fromEntries(previousStates),
