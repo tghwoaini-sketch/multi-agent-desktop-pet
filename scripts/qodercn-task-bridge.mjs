@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname } from "node:path";
 
@@ -34,14 +34,15 @@ function cleanText(value, fallback = "") {
 function loadState() {
   try {
     const saved = JSON.parse(readFileSync(DISPLAY_STATE_FILE, "utf8"));
-    const legacyState = saved?.version !== 2;
+    const legacyState = saved?.version !== 3;
     for (const id of saved?.threads || []) if (typeof id === "string") displayed.add(id);
     for (const [id, state] of Object.entries(saved?.states || {})) if (typeof state === "string") mountedStates.set(id, state);
     for (const [id, state] of Object.entries(saved?.previousStates || {})) if (typeof state === "string") previousStates.set(id, state);
     for (const [id, signature] of Object.entries(saved?.acknowledged || {})) if (typeof signature === "string") acknowledged.set(id, signature);
+    // One-time v3 repair for completed bubbles mounted by older bridges.
     if (legacyState) {
       for (const [id, state] of mountedStates) {
-        if (["completed", "failed"].includes(state) && !acknowledged.has(id)) acknowledged.set(id, "legacy-terminal-ack");
+        if (state === "completed" && !acknowledged.has(id)) acknowledged.set(id, "legacy-terminal-ack");
       }
     }
   } catch {
@@ -52,13 +53,15 @@ function loadState() {
 function saveState() {
   try {
     mkdirSync(dirname(DISPLAY_STATE_FILE), { recursive: true });
-    writeFileSync(DISPLAY_STATE_FILE, `${JSON.stringify({
-      version: 2,
+    const temporaryState = `${DISPLAY_STATE_FILE}.tmp`;
+    writeFileSync(temporaryState, `${JSON.stringify({
+      version: 3,
       threads: [...displayed],
       states: Object.fromEntries(mountedStates),
       previousStates: Object.fromEntries(previousStates),
       acknowledged: Object.fromEntries(acknowledged),
     })}\n`);
+    renameSync(temporaryState, DISPLAY_STATE_FILE);
   } catch {
     // The bridge remains usable if its small recovery file cannot be saved.
   }
@@ -170,7 +173,9 @@ async function clearTask(id) {
 
 async function relayTask(task) {
   const signature = taskSignature(task);
-  if ((task.state === "completed" || task.state === "failed") && acknowledged.has(task.id)) return;
+  // A consumed completion permanently retires its task ID, even if Qoder's
+  // cached runtime signal later flickers back to active.
+  if (acknowledged.has(task.id)) return;
   if (signatures.get(task.id) === signature) return;
   if (relayPromises.has(task.id)) return relayPromises.get(task.id);
   const relay = (async () => {
@@ -225,7 +230,10 @@ async function refresh() {
     const tasks = await readTasks();
     const candidates = [];
     for (const task of tasks) {
-      if (["active", "review"].includes(task.state)) acknowledged.delete(task.id);
+      if (acknowledged.has(task.id)) {
+        previousStates.set(task.id, task.state);
+        continue;
+      }
       const previous = previousStates.get(task.id);
       const shouldMountTerminal = ["completed", "failed"].includes(task.state)
         && !acknowledged.has(task.id)

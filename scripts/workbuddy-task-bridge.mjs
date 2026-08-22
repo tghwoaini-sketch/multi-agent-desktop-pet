@@ -1,6 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
@@ -40,14 +40,15 @@ function cleanText(value, fallback = "") {
 function loadDisplayed() {
   try {
     const saved = JSON.parse(readFileSync(DISPLAY_STATE_FILE, "utf8"));
-    const legacyState = saved?.version !== 2;
+    const legacyState = saved?.version !== 3;
     for (const id of saved?.threads || []) if (typeof id === "string") displayed.add(id);
     for (const [id, state] of Object.entries(saved?.states || {})) if (typeof state === "string") mountedStates.set(id, state);
     for (const [id, signature] of Object.entries(saved?.acknowledged || {})) if (typeof signature === "string") acknowledged.set(id, signature);
     for (const [id, state] of Object.entries(saved?.previousStates || {})) if (typeof state === "string") previousStates.set(id, state);
+    // One-time v3 repair for completed bubbles mounted by older bridges.
     if (legacyState) {
       for (const [id, state] of mountedStates) {
-        if (["completed", "failed"].includes(state) && !acknowledged.has(id)) acknowledged.set(id, "legacy-terminal-ack");
+        if (state === "completed" && !acknowledged.has(id)) acknowledged.set(id, "legacy-terminal-ack");
       }
     }
   } catch {
@@ -58,13 +59,15 @@ function loadDisplayed() {
 function saveDisplayed() {
   try {
     mkdirSync(dirname(DISPLAY_STATE_FILE), { recursive: true });
-    writeFileSync(DISPLAY_STATE_FILE, `${JSON.stringify({
-      version: 2,
+    const temporaryState = `${DISPLAY_STATE_FILE}.tmp`;
+    writeFileSync(temporaryState, `${JSON.stringify({
+      version: 3,
       threads: [...displayed],
       states: Object.fromEntries(mountedStates),
       acknowledged: Object.fromEntries(acknowledged),
       previousStates: Object.fromEntries(previousStates),
     })}\n`);
+    renameSync(temporaryState, DISPLAY_STATE_FILE);
   } catch {
     // OpenPets still works if the small recovery file cannot be saved.
   }
@@ -237,7 +240,9 @@ function taskSignature(task) {
 async function relayTask(task) {
   const signature = taskSignature(task);
   const needsUser = task.state === "review";
-  if (task.state === "completed" && acknowledged.has(task.id)) return;
+  // Once the user consumes a completion, this task ID is retired forever.
+  // A stale log tail must not be able to revive it as an active task.
+  if (acknowledged.has(task.id)) return;
   if (signatures.get(task.id) === signature || relayPromises.has(task.id)) return relayPromises.get(task.id);
   const relay = (async () => {
     const ok = await runOpenPets([
@@ -303,11 +308,13 @@ async function refresh() {
       ...tasks.slice(0, 100).map((task) => task.id),
       ...displayed,
     ]);
-    for (const id of acknowledged.keys()) if (!retainedIds.has(id)) acknowledged.delete(id);
     for (const id of previousStates.keys()) if (!retainedIds.has(id)) previousStates.delete(id);
     const candidates = [];
     for (const task of tasks) {
-      if (["active", "review", "failed"].includes(task.state)) acknowledged.delete(task.id);
+      if (acknowledged.has(task.id)) {
+        previousStates.set(task.id, task.state);
+        continue;
+      }
       const previous = previousStates.get(task.id);
       const signature = taskSignature(task);
       const shouldMountCompletion = task.state === "completed"

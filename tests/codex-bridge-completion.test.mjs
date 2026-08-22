@@ -31,7 +31,7 @@ async function waitForCalls(path, predicate, timeout = 10_000) {
   throw new Error(`Timed out waiting for calls in ${path}`);
 }
 
-test("Codex keeps a completed live task until acknowledgement without reviving history", async (context) => {
+test("Codex permanently retires an acknowledged task ID", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "xiaobu-codex-test-"));
   const taskId = "22222222-2222-4222-8222-222222222222";
   const rollout = join(root, "rollout.jsonl");
@@ -120,6 +120,19 @@ test("Codex keeps a completed live task until acknowledgement without reviving h
   child = launch();
   await waitFor(`http://127.0.0.1:${port}/tasks`, (value) => value.tasks?.[0]?.state === "已完成");
   await sleep(3500);
-  const callsAfterRestart = (await readFile(cliLog, "utf8")).trim().split("\n").map(JSON.parse);
+  let callsAfterRestart = (await readFile(cliLog, "utf8")).trim().split("\n").map(JSON.parse);
+  assert.equal(callsAfterRestart.length, callsBeforeRestart);
+
+  // Simulate a stale status source regressing the same historical task back
+  // to active and then completed. Its acknowledged ID must stay invisible.
+  await appendFile(rollout, JSON.stringify({ type: "event_msg", payload: { type: "task_started" } }) + "\n");
+  await waitFor(`http://127.0.0.1:${port}/tasks`, (value) => value.tasks?.[0]?.state === "推进中");
+  await sleep(3500);
+  callsAfterRestart = (await readFile(cliLog, "utf8")).trim().split("\n").map(JSON.parse);
+  assert.equal(callsAfterRestart.length, callsBeforeRestart);
+  await appendFile(rollout, JSON.stringify({ type: "event_msg", payload: { type: "task_complete" } }) + "\n");
+  await waitFor(`http://127.0.0.1:${port}/tasks`, (value) => value.tasks?.[0]?.state === "已完成");
+  await sleep(3500);
+  callsAfterRestart = (await readFile(cliLog, "utf8")).trim().split("\n").map(JSON.parse);
   assert.equal(callsAfterRestart.length, callsBeforeRestart);
 });

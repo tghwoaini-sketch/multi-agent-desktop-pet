@@ -1,7 +1,7 @@
 import { execFile, spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { createInterface } from "node:readline";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -60,7 +60,7 @@ function loadOpenPetsThreads() {
   try {
     const saved = JSON.parse(readFileSync(OPENPETS_THREAD_STATE, "utf8"));
     if (!saved || typeof saved !== "object") return;
-    const legacyState = saved.version !== 2;
+    const legacyState = saved.version !== 3;
     const threads = saved.threads && typeof saved.threads === "object" ? saved.threads : saved;
     for (const [taskId, threadId] of Object.entries(threads)) {
       if (typeof taskId === "string" && typeof threadId === "string" && threadId) openPetsThreads.set(taskId, threadId);
@@ -71,11 +71,11 @@ function loadOpenPetsThreads() {
     for (const [taskId, signature] of Object.entries(saved.acknowledged || {})) {
       if (typeof taskId === "string" && typeof signature === "string") acknowledgedSignatures.set(taskId, signature);
     }
-    // One-time repair for pre-v2 files: terminal bubbles that survived a
-    // click were indistinguishable from genuinely pending completions.
+    // One-time v3 repair: retire completed bubbles left mounted by older
+    // bridges so stale history is cleared instead of replayed again.
     if (legacyState) {
       for (const [taskId, state] of openPetsStates) {
-        if (["done", "failed"].includes(state) && !acknowledgedSignatures.has(taskId)) {
+        if (state === "done" && !acknowledgedSignatures.has(taskId)) {
           acknowledgedSignatures.set(taskId, "legacy-terminal-ack");
         }
       }
@@ -88,12 +88,14 @@ function loadOpenPetsThreads() {
 function saveOpenPetsThreads() {
   try {
     mkdirSync(dirname(OPENPETS_THREAD_STATE), { recursive: true });
-    writeFileSync(OPENPETS_THREAD_STATE, `${JSON.stringify({
-      version: 2,
+    const temporaryState = `${OPENPETS_THREAD_STATE}.tmp`;
+    writeFileSync(temporaryState, `${JSON.stringify({
+      version: 3,
       threads: Object.fromEntries(openPetsThreads),
       states: Object.fromEntries(openPetsStates),
       acknowledged: Object.fromEntries(acknowledgedSignatures),
     })}\n`);
+    renameSync(temporaryState, OPENPETS_THREAD_STATE);
   } catch {
     // The bridge can still operate without persistence if the config directory is unavailable.
   }
@@ -303,7 +305,10 @@ function runOpenPets(args) {
 
 async function relayTaskToOpenPets(task) {
   const signature = taskSignature(task);
-  if (task.state === "已完成" && acknowledgedSignatures.has(task.id)) return;
+  // Acknowledgement is a permanent tombstone for this task ID. Agent status
+  // sources can briefly regress an old task to "active" after a restart; that
+  // must never turn an already-consumed completion back into a live bubble.
+  if (acknowledgedSignatures.has(task.id)) return;
 
   if (openPetsSignatures.get(task.id) === signature) return;
   if (relayPromises.has(task.id)) return relayPromises.get(task.id);
@@ -363,14 +368,11 @@ async function acknowledgeTask(taskId) {
 }
 
 async function relayCodexTasksToOpenPets(tasks) {
-  for (const task of tasks) {
-    if (["推进中", "需要介入", "已阻塞"].includes(task.state)) acknowledgedSignatures.delete(task.id);
-  }
   // Completed history is intentionally excluded. A completion may remain
   // mounted only when this bridge previously displayed the same live task.
   const selected = tasks
     .filter((task) => (task.state !== "已完成" || openPetsStates.has(task.id))
-      && !(task.state === "已完成" && acknowledgedSignatures.has(task.id)))
+      && !acknowledgedSignatures.has(task.id))
     .slice(0, PET_TASK_LIMIT);
   const selectedIds = new Set(selected.map((task) => task.id));
   const evictedIds = [...openPetsThreads.keys()].filter((taskId) => !selectedIds.has(taskId));

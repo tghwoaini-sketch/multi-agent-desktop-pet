@@ -19,7 +19,7 @@ async function waitFor(url, predicate, timeout = 10_000) {
   throw new Error(`Timed out waiting for ${url}`);
 }
 
-test("WorkBuddy keeps completion mounted until click and persists acknowledgement", async (context) => {
+test("WorkBuddy permanently retires an acknowledged task ID", async (context) => {
   const root = await mkdtemp(join(tmpdir(), "xiaobu-workbuddy-test-"));
   const workbuddy = join(root, "workbuddy");
   const project = join(workbuddy, "projects", "fixture");
@@ -114,6 +114,24 @@ test("WorkBuddy keeps completion mounted until click and persists acknowledgemen
   child = launch();
   await waitFor(`http://127.0.0.1:${port}/tasks`, (value) => value.connected && value.tasks?.length === 0);
   await sleep(3500);
-  const callsAfterRestart = (await readFile(cliLog, "utf8")).trim().split("\n").map(JSON.parse);
+  let callsAfterRestart = (await readFile(cliLog, "utf8")).trim().split("\n").map(JSON.parse);
+  assert.equal(callsAfterRestart.length, callsBeforeRestart);
+
+  // Reusing the same session ID must not revive a completion, even when the
+  // event stream appears active again before completing a second time.
+  await appendFile(rollout, JSON.stringify({ timestamp: Date.now() + 5, type: "reasoning" }) + "\n");
+  await sleep(3500);
+  callsAfterRestart = (await readFile(cliLog, "utf8")).trim().split("\n").map(JSON.parse);
+  assert.equal(callsAfterRestart.length, callsBeforeRestart);
+  await appendFile(rollout, JSON.stringify({
+    timestamp: Date.now() + 6,
+    type: "message",
+    role: "assistant",
+    status: "completed",
+    message: { content: "再次完成" },
+    providerData: { rawUsage: { total_token: 1 } },
+  }) + "\n");
+  await sleep(3500);
+  callsAfterRestart = (await readFile(cliLog, "utf8")).trim().split("\n").map(JSON.parse);
   assert.equal(callsAfterRestart.length, callsBeforeRestart);
 });

@@ -67,7 +67,7 @@ WorkBuddy 由独立的 `com.xiaobu.workbuddy-pet` 桥接守护。它只读监听
 
 - Codex 与 WorkBuddy 任务状态桥接到 OpenPets。
 - 同一任务复用同一 `threadId`，避免气泡越积越多。
-- 完成任务保持绿色完成气泡，点击后才清理。
+- 完成任务保持绿色完成气泡，点击后清理并永久记住该任务 ID；状态抖动、重启或历史数据回流都不会再次生成气泡。
 - 点击任务通过本机 `xiaobu-task://` 协议切换到对应 Agent 桌面。
 - OpenPets 原生气泡的运行指示器可替换成当前桌宠的微型跑动帧。
 
